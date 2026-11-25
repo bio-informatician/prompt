@@ -350,7 +350,6 @@ def _generate_pectoral_fins_mesh(current_time: float, record_fn) -> None:
             - vector_out * (0.07 * (b_mesh ** 2) * np.cos(stroke_beat))[:, None]
         )
         record_fn(p, p + fin_ray * 0.03, b_mesh, margin=0.74, rim=0.93)
-        record_fn(p, p + fin_ray * 0.03, b_mesh, margin=0.74, rim=0.93)
 
 def generate_fish_fins_mesh(current_time: float) -> List[np.ndarray]:
     fin_components: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
@@ -1700,7 +1699,7 @@ def _enhance_depth_contours(
 
     contour_edges = np.full((rows, GRID_COLUMNS), -1, dtype=np.int32)
     contour_edges[fish_cells & boundary_up & (owner_matrix != SURFACE_FIN)] = encode_glyph_index("-")
-    contour_edges[fish_cells & boundary_down] = encode_glyph_index("_")
+    contour_edges[fish_cells & boundary_down] = encode_glyph_index("-")
     contour_edges[fish_cells & boundary_left] = encode_glyph_index("(")
     contour_edges[fish_cells & boundary_left & boundary_up] = encode_glyph_index("/")
     contour_edges[fish_cells & boundary_left & boundary_down] = encode_glyph_index("\\")
@@ -2111,7 +2110,7 @@ def _calculate_terminal_viewport(
     return row_start, row_end, col_start, col_end
 
 def draw_ascii_terminal_frame(
-    timestamp: float = 3.0,
+    timestamp: float = 0.8,
     color: Optional[bool] = None,
     full: bool = False,
     clear_eol: bool = False,
@@ -2217,7 +2216,7 @@ def _setup_export_arguments(subparser: argparse.ArgumentParser) -> None:
     )
 
 def _handle_terminal_view_command(args: argparse.Namespace) -> None:
-    time_point = getattr(args, "time", 3.0)
+    time_point = getattr(args, "time", 0.8)
     vertical_full = getattr(args, "full", False)
     color_mode = getattr(args, "color", None)
     rendered_scene = draw_ascii_terminal_frame(timestamp=time_point, color=color_mode, full=vertical_full)
@@ -2269,7 +2268,7 @@ def _create_cli_argument_parser() -> tuple[argparse.ArgumentParser, dict[str, ar
         aliases=["terminal", "print", "view"],
         help="Display ASCII scene directly in terminal",
     )
-    cmd_show.add_argument("-t", "--time", type=float, default=3.0, help="Timestamp in seconds")
+    cmd_show.add_argument("-t", "--time", type=float, default=0.8, help="Timestamp in seconds")
     cmd_show.add_argument("--full", action="store_true", default=False, help="Display full vertical frame")
     cmd_show.add_argument("--color", dest="color", action="store_true", default=None, help="Force ANSI TrueColor output")
     cmd_show.add_argument("--no-color", dest="color", action="store_false", help="Disable color (monochrome ASCII)")
@@ -2313,7 +2312,7 @@ def _create_cli_argument_parser() -> tuple[argparse.ArgumentParser, dict[str, ar
 def execute_cli_entrypoint(argv: list[str] | None = None) -> None:
     cli_tokens = sys.argv[1:] if argv is None else argv
     if not cli_tokens:
-        print(draw_ascii_terminal_frame(3.0))
+        print(draw_ascii_terminal_frame(0.8))
         return
 
     parser, sub_map = _create_cli_argument_parser()

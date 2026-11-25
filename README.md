@@ -25,14 +25,14 @@ python3 prompt.py
 python3 prompt.py play
 
 # 3. Render specific simulation timestamp:
-python3 prompt.py show --time 3.0 --full
+python3 prompt.py show --time 0.8 --full
 ```
 
 ## Media Export
 
 ```sh
 # Export single frame as PNG:
-python3 prompt.py png 3.0 frame.png
+python3 prompt.py png 0.8 frame.png
 
 # Export full 22-second video loop (requires FFmpeg):
 python3 prompt.py mp4 fish.mp4
