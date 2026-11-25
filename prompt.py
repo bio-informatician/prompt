@@ -142,8 +142,8 @@ def rotate_vector_roll_z(points: np.ndarray, angle: float) -> np.ndarray:
 
 def determine_line_glyph(dx: np.ndarray, dy: np.ndarray) -> np.ndarray:
     norm_dx, norm_dy = dx / CHAR_WIDTH, dy / CHAR_HEIGHT
-    is_steep = np.abs(norm_dy) > 2.0 * np.abs(norm_dx)
-    is_flat = np.abs(norm_dx) > 2.0 * np.abs(norm_dy)
+    is_steep = np.abs(norm_dy) > 2.2 * np.abs(norm_dx)
+    is_flat = np.abs(norm_dy) < 0.35 * np.abs(norm_dx)
     is_positive_slope = (norm_dx * norm_dy) < 0.0
     return np.select(
         [is_steep, is_flat, is_positive_slope],
@@ -291,11 +291,11 @@ def _generate_pelvic_fins_mesh(current_time: float, record_fn) -> None:
 
 def _generate_caudal_fin_mesh(current_time: float, record_fn) -> None:
     a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(-1.0, 1.0, 110), np.linspace(0.0, 1.0, 46), indexing="ij")]
-    fan_angle = 0.95 * a_mesh
-    radius = b_mesh * 0.31 * (1.0 - 0.13 * (a_mesh ** 2))
+    fan_angle = 1.15 * a_mesh
+    radius = b_mesh * 0.28 * (1.0 - 0.12 * (a_mesh ** 2))
 
     arc_stations = np.linspace(0.0, 1.0, 46)
-    wave_sample_stations = 0.98 + 0.31 * arc_stations
+    wave_sample_stations = 0.98 + 0.28 * arc_stations
     tangent_slopes = np.clip(
         np.arctan(
             np.gradient(calculate_body_undulation_sway(wave_sample_stations, current_time - 0.12 * arc_stations), wave_sample_stations)
@@ -309,7 +309,7 @@ def _generate_caudal_fin_mesh(current_time: float, record_fn) -> None:
     integrated_z = np.concatenate([[0.0], np.cumsum(np.sin(tangent_slopes[1:]) * arc_step)])
 
     radial_index = np.arange(len(b_mesh)) % 46
-    fan_span = 0.31 * (1.0 - 0.13 * (a_mesh ** 2))
+    fan_span = 0.28 * (1.0 - 0.12 * (a_mesh ** 2))
     tail_x = CAUDAL_FIN_ROOT + fan_span * np.cos(fan_angle) * integrated_x[radial_index]
     tail_y = 0.075 * a_mesh * (1.0 - b_mesh) + radius * np.sin(fan_angle)
     tail_phase = SWIM_STATE["phase"] - 3.4 * 0.98 - 1.8 * b_mesh
@@ -323,7 +323,9 @@ def _generate_caudal_fin_mesh(current_time: float, record_fn) -> None:
         ],
         axis=-1,
     )
-    ray = np.stack([np.cos(fan_angle), np.sin(fan_angle), np.zeros_like(fan_angle)], axis=-1)
+    ray_radial = np.stack([np.cos(fan_angle), np.sin(fan_angle), np.zeros_like(fan_angle)], axis=-1)
+    ray_rim = np.stack([-np.sin(fan_angle), np.cos(fan_angle), np.zeros_like(fan_angle)], axis=-1)
+    ray = np.where((b_mesh > 0.91)[:, None], ray_rim, ray_radial)
     record_fn(p, p + ray * 0.03, b_mesh, margin=0.76, rim=0.94)
 
 def _generate_pectoral_fins_mesh(current_time: float, record_fn) -> None:
@@ -344,12 +346,14 @@ def _generate_pectoral_fins_mesh(current_time: float, record_fn) -> None:
         blade_radius = b_mesh * 0.21 * (1.0 - 0.12 * (a_mesh ** 2))
         hinge_pivot = np.array([0.375 - 0.45, -0.07, lateral_side * calculate_body_half_width(0.375) * 0.90])
         fin_ray = pectoral_axis * np.cos(blade_angle)[:, None] + vector_up * np.sin(blade_angle)[:, None]
+        rim_tangent = -pectoral_axis * np.sin(blade_angle)[:, None] + vector_up * np.cos(blade_angle)[:, None]
+        ray_p = np.where((b_mesh > 0.91)[:, None], rim_tangent, fin_ray)
         p = (
             hinge_pivot
             + fin_ray * blade_radius[:, None]
             - vector_out * (0.07 * (b_mesh ** 2) * np.cos(stroke_beat))[:, None]
         )
-        record_fn(p, p + fin_ray * 0.03, b_mesh, margin=0.74, rim=0.93)
+        record_fn(p, p + ray_p * 0.03, b_mesh, margin=0.74, rim=0.93)
 
 def generate_fish_fins_mesh(current_time: float) -> List[np.ndarray]:
     fin_components: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
@@ -1699,7 +1703,7 @@ def _enhance_depth_contours(
 
     contour_edges = np.full((rows, GRID_COLUMNS), -1, dtype=np.int32)
     contour_edges[fish_cells & boundary_up & (owner_matrix != SURFACE_FIN)] = encode_glyph_index("-")
-    contour_edges[fish_cells & boundary_down] = encode_glyph_index("-")
+    contour_edges[fish_cells & boundary_down & (owner_matrix != SURFACE_FIN)] = encode_glyph_index("-")
     contour_edges[fish_cells & boundary_left] = encode_glyph_index("(")
     contour_edges[fish_cells & boundary_left & boundary_up] = encode_glyph_index("/")
     contour_edges[fish_cells & boundary_left & boundary_down] = encode_glyph_index("\\")
