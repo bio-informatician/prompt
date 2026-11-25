@@ -159,7 +159,7 @@
       [ 0.30,  0.04,  0.24]
     ];
 
-    function evaluateTrajectory(t) {
+    function calculateTrajectoryState(t) {
       const normTime = ((t % DURATION) / DURATION) * WAYPOINTS.length;
       const idx = Math.floor(normTime);
       const frac = normTime - idx;
@@ -195,17 +195,17 @@
     let isPlaying = false;
     let lastAnimTime = null;
 
-    function resizeCanvases() {
+    function updateCanvasDimensions() {
       [topCanvas, sideCanvas, chartCanvas].forEach(c => {
         c.width = c.clientWidth * window.devicePixelRatio;
         c.height = c.clientHeight * window.devicePixelRatio;
       });
-      render();
+      renderKinematicViews();
     }
-    window.addEventListener('resize', resizeCanvases);
+    window.addEventListener('resize', updateCanvasDimensions);
 
-    function render() {
-      const state = evaluateTrajectory(currentTime);
+    function renderKinematicViews() {
+      const state = calculateTrajectoryState(currentTime);
 
       timeLabel.textContent = `${currentTime.toFixed(2)} s`;
       timeSlider.value = currentTime;
@@ -224,7 +224,7 @@
       ctxTop.strokeStyle = '#2c3b4a';
       ctxTop.lineWidth = 2 * window.devicePixelRatio;
       for (let s = 0; s <= DURATION; s += 0.2) {
-        const pt = evaluateTrajectory(s);
+        const pt = calculateTrajectoryState(s);
         const px = oxTop + pt.x * scaleTop;
         const py = oyTop + pt.z * scaleTop;
         if (s === 0) ctxTop.moveTo(px, py);
@@ -255,7 +255,7 @@
       ctxSide.strokeStyle = '#2c3b4a';
       ctxSide.lineWidth = 2 * window.devicePixelRatio;
       for (let s = 0; s <= DURATION; s += 0.2) {
-        const pt = evaluateTrajectory(s);
+        const pt = calculateTrajectoryState(s);
         const px = oxSide + pt.x * scaleSide;
         const py = oySide - pt.y * scaleSide;
         if (s === 0) ctxSide.moveTo(px, py);
@@ -279,7 +279,7 @@
       ctxChart.strokeStyle = '#8be5a6';
       ctxChart.lineWidth = 2 * window.devicePixelRatio;
       for (let s = 0; s <= DURATION; s += 0.1) {
-        const sample = evaluateTrajectory(s);
+        const sample = calculateTrajectoryState(s);
         const px = (s / DURATION) * w;
         const py = h - (sample.thrust / 4.0) * (h * 0.8) - 10;
         if (s === 0) ctxChart.moveTo(px, py);
@@ -296,15 +296,15 @@
       ctxChart.stroke();
     }
 
-    function animLoop(timestamp) {
+    function stepAnimationCycle(timestamp) {
       if (!isPlaying) return;
       if (lastAnimTime === null) lastAnimTime = timestamp;
       const dt = (timestamp - lastAnimTime) / 1000.0;
       lastAnimTime = timestamp;
 
       currentTime = (currentTime + dt) % DURATION;
-      render();
-      requestAnimationFrame(animLoop);
+      renderKinematicViews();
+      requestAnimationFrame(stepAnimationCycle);
     }
 
     playBtn.addEventListener('click', () => {
@@ -312,16 +312,16 @@
       playBtn.textContent = isPlaying ? 'Pause' : 'Play';
       if (isPlaying) {
         lastAnimTime = null;
-        requestAnimationFrame(animLoop);
+        requestAnimationFrame(stepAnimationCycle);
       }
     });
 
     timeSlider.addEventListener('input', (e) => {
       currentTime = parseFloat(e.target.value);
-      render();
+      renderKinematicViews();
     });
 
-    resizeCanvases();
+    updateCanvasDimensions();
   </script>
 </body>
 </html>

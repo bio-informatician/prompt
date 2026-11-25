@@ -49,10 +49,10 @@ LIGHT = LIGHT_DIRECTION
 GLYPH_RAMP = "$QB%8&0#@oauenjzt[]{}<>rcvx+=1il!;:,"
 RAMP = GLYPH_RAMP
 
-def glyph_id(char: str) -> int:
+def encode_glyph_index(char: str) -> int:
     return ord(char) - 32
 
-GLYPH_RAMP_INDICES = np.array([glyph_id(c) for c in GLYPH_RAMP], dtype=np.int32)
+GLYPH_RAMP_INDICES = np.array([encode_glyph_index(c) for c in GLYPH_RAMP], dtype=np.int32)
 RAMP_G = GLYPH_RAMP_INDICES
 
 SURFACE_FISH: int = 1
@@ -93,10 +93,10 @@ TENTACLE_TIP = np.array([186, 228, 236], dtype=np.float64) / 255.0
 TENTACLE_STEM = np.array([112, 94, 160], dtype=np.float64) / 255.0
 TIP, STEM = TENTACLE_TIP, TENTACLE_STEM
 
-TENTACLE_FILL_GLYPHS = np.array([glyph_id(c) for c in ".::;;ioo08"], dtype=np.int32)
+TENTACLE_FILL_GLYPHS = np.array([encode_glyph_index(c) for c in ".::;;ioo08"], dtype=np.int32)
 FILL_G = TENTACLE_FILL_GLYPHS
 
-ROCK_GLYPHS = np.array([glyph_id(c) for c in " . .:.:;:=+"], dtype=np.int32)
+ROCK_GLYPHS = np.array([encode_glyph_index(c) for c in " . .:.:;:=+"], dtype=np.int32)
 ROCK_G = ROCK_GLYPHS
 
 SEABED_ELEVATION: float = -1.42
@@ -107,44 +107,44 @@ MOUND = ANEMONE_MOUND_DIMENSIONS
 ANEMONE_ROOT_POSITION = (0.05, -1.02, 0.40)
 LAYOUT_WEED = ANEMONE_ROOT_POSITION
 
-def ease(x: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def calculate_cubic_ease(x: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     x_clamped = np.clip(x, 0.0, 1.0)
     return (3.0 - 2.0 * x_clamped) * x_clamped * x_clamped
 
-def rgb(*components: float) -> np.ndarray:
+def create_rgb_vector(*components: float) -> np.ndarray:
     return np.asarray(components, dtype=np.float64) / 255.0
 
-def unit(vectors: np.ndarray) -> np.ndarray:
+def normalize_vector(vectors: np.ndarray) -> np.ndarray:
     norm = np.maximum(np.sqrt(np.sum(vectors * vectors, axis=-1, keepdims=True)), 1e-9)
     return vectors / norm
 
-def rot_x(points: np.ndarray, angle: float) -> np.ndarray:
+def rotate_vector_pitch_x(points: np.ndarray, angle: float) -> np.ndarray:
     c, s = np.cos(angle), np.sin(angle)
     x, y, z = np.moveaxis(points, -1, 0)
     return np.stack([x, c * y - s * z, s * y + c * z], axis=-1)
 
-def rot_y(points: np.ndarray, angle: float) -> np.ndarray:
+def rotate_vector_yaw_y(points: np.ndarray, angle: float) -> np.ndarray:
     c, s = np.cos(angle), np.sin(angle)
     x, y, z = np.moveaxis(points, -1, 0)
     return np.stack([c * x + s * z, y, -s * x + c * z], axis=-1)
 
-def rot_z(points: np.ndarray, angle: float) -> np.ndarray:
+def rotate_vector_roll_z(points: np.ndarray, angle: float) -> np.ndarray:
     c, s = np.cos(angle), np.sin(angle)
     x, y, z = np.moveaxis(points, -1, 0)
     return np.stack([c * x - s * y, s * x + c * y, z], axis=-1)
 
-def line_glyph(dx: np.ndarray, dy: np.ndarray) -> np.ndarray:
+def determine_line_glyph(dx: np.ndarray, dy: np.ndarray) -> np.ndarray:
     norm_dx, norm_dy = dx / CHAR_WIDTH, dy / CHAR_HEIGHT
     is_steep = np.abs(norm_dy) > 2.0 * np.abs(norm_dx)
     is_flat = np.abs(norm_dx) > 2.0 * np.abs(norm_dy)
     is_positive_slope = (norm_dx * norm_dy) < 0.0
     return np.select(
         [is_steep, is_flat, is_positive_slope],
-        [glyph_id("|"), glyph_id("-"), glyph_id("/")],
-        glyph_id("\\"),
+        [encode_glyph_index("|"), encode_glyph_index("-"), encode_glyph_index("/")],
+        encode_glyph_index("\\"),
     )
 
-def hash01(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def generate_hash_float(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.modf(np.abs(np.sin(a * 127.1 + b * 311.7) * 43758.5453))[0]
 
 PROFILE_STATIONS = np.array([0.0, 0.03, 0.08, 0.16, 0.30, 0.45, 0.60, 0.75, 0.88, 0.96, 1.0], dtype=np.float64)
@@ -176,19 +176,19 @@ SWIM_STATE: Dict[str, float] = {
 }
 SWIM = SWIM_STATE
 
-def half_height(station: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def calculate_body_half_height(station: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     return np.interp(station, PROFILE_STATIONS, PROFILE_HALF_HEIGHTS)
 
-def half_width(station: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    return half_height(station) * (0.58 - 0.22 * station)
+def calculate_body_half_width(station: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    return calculate_body_half_height(station) * (0.58 - 0.22 * station)
 
-def sway(station: Union[float, np.ndarray], current_time: float) -> Union[float, np.ndarray]:
+def calculate_body_undulation_sway(station: Union[float, np.ndarray], current_time: float) -> Union[float, np.ndarray]:
     oscillation_beat = SWIM_STATE["phase"] - TWO_PI * min(SWIM_STATE["hz"], 1.0) * (SWIM_STATE["t"] - current_time)
     spine_wave = (0.014 + 0.105 * (station ** 2)) * np.sin(oscillation_beat - 3.4 * station)
     steering_bend = SWIM_STATE["turn"] * ((station - 0.25) ** 2) * np.sign(station - 0.25)
     return SWIM_STATE["effort"] * spine_wave + steering_bend
 
-def stripes(station: np.ndarray, flank_height: np.ndarray) -> np.ndarray:
+def calculate_stripe_pattern(station: np.ndarray, flank_height: np.ndarray) -> np.ndarray:
     dorsoventral_bulge = np.exp(-((flank_height / 0.55) ** 2))
     white_bands = [
         (0.215 + 0.035 * (flank_height ** 2), 0.335 + 0.02 * (flank_height ** 2)),
@@ -201,27 +201,27 @@ def stripes(station: np.ndarray, flank_height: np.ndarray) -> np.ndarray:
         pigment_type = np.where((station > band_start) & (station < band_end), 1, pigment_type)
     return pigment_type
 
-def body(current_time: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def generate_fish_body_mesh(current_time: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     station_grid, theta_grid = np.meshgrid(
         np.linspace(0.0, 1.0, 280),
         np.linspace(0.0, TWO_PI, 120, endpoint=False),
         indexing="ij",
     )
     s_flat, theta_flat = station_grid.ravel(), theta_grid.ravel()
-    height_profile = half_height(s_flat)
-    width_profile = half_width(s_flat)
+    height_profile = calculate_body_half_height(s_flat)
+    width_profile = calculate_body_half_width(s_flat)
     sin_theta = np.sin(theta_flat)
 
     points = np.stack(
         [
             s_flat - 0.45,
             height_profile * sin_theta,
-            width_profile * np.cos(theta_flat) + sway(s_flat, current_time),
+            width_profile * np.cos(theta_flat) + calculate_body_undulation_sway(s_flat, current_time),
         ],
         axis=-1,
     )
     height_gradient = np.gradient(PROFILE_HALF_HEIGHTS, PROFILE_STATIONS)
-    normals = unit(
+    normals = normalize_vector(
         np.stack(
             [
                 -np.interp(s_flat, PROFILE_STATIONS, height_gradient) * width_profile,
@@ -232,8 +232,8 @@ def body(current_time: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.nd
         )
     )
 
-    pigment_kind = stripes(s_flat, sin_theta)
-    ventral_shade = ease(sin_theta[:, None] * 0.9)
+    pigment_kind = calculate_stripe_pattern(s_flat, sin_theta)
+    ventral_shade = calculate_cubic_ease(sin_theta[:, None] * 0.9)
     base_color = PALETTE_ORANGE * (1.0 - 0.5 * ventral_shade) + PALETTE_DEEP * (0.5 * ventral_shade)
     base_color = np.where((s_flat < 0.2)[:, None], base_color * 0.45 + PALETTE_FACE * 0.55, base_color)
     final_color = np.select(
@@ -243,43 +243,43 @@ def body(current_time: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.nd
     )
     return points, normals, final_color, pigment_kind
 
-def _generate_dorsal_fin(current_time: float, record_fn) -> None:
+def _generate_dorsal_fin_mesh(current_time: float, record_fn) -> None:
     for s_start, s_end, fin_height, lean_factor in [(0.25, 0.57, 0.15, 0.45), (0.53, 0.88, 0.125, 0.85)]:
         a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(0.0, 1.0, 110), np.linspace(0.0, 1.0, 30), indexing="ij")]
         station = s_start + (s_end - s_start) * a_mesh
         reach = fin_height * (np.sin(np.pi * (a_mesh ** 0.8)) ** 0.8)
-        root = np.stack([station - 0.45, half_height(station) * 0.93, np.zeros_like(station)], axis=-1)
+        root = np.stack([station - 0.45, calculate_body_half_height(station) * 0.93, np.zeros_like(station)], axis=-1)
         outward = np.stack([lean_factor * reach, reach, np.zeros_like(station)], axis=-1)
         p = root + outward * b_mesh[:, None]
-        p[:, 2] = sway(p[:, 0] + 0.45, current_time - 0.16 * b_mesh) + 0.05 * (b_mesh ** 1.5) * np.sin(
+        p[:, 2] = calculate_body_undulation_sway(p[:, 0] + 0.45, current_time - 0.16 * b_mesh) + 0.05 * (b_mesh ** 1.5) * np.sin(
             TWO_PI * 1.1 * current_time - 8.0 * a_mesh - 3.0 * (s_start > 0.4)
         )
-        q = p + unit(outward) * 0.03
+        q = p + normalize_vector(outward) * 0.03
         record_fn(p, q, b_mesh, margin=0.84, rim=0.96)
 
-def _generate_anal_fin(current_time: float, record_fn) -> None:
+def _generate_anal_fin_mesh(current_time: float, record_fn) -> None:
     a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(0.0, 1.0, 80), np.linspace(0.0, 1.0, 26), indexing="ij")]
     station = 0.62 + 0.25 * a_mesh
     reach = 0.135 * (np.sin(np.pi * np.clip(a_mesh * 0.9 + 0.1, 0.0, 1.0)) ** 0.6)
     outward = np.stack([0.7 * reach, -reach, np.zeros_like(station)], axis=-1)
-    p = np.stack([station - 0.45, -half_height(station) * 0.93, np.zeros_like(station)], axis=-1) + outward * b_mesh[:, None]
-    p[:, 2] = sway(p[:, 0] + 0.45, current_time - 0.18 * b_mesh) + 0.045 * (b_mesh ** 1.5) * np.sin(
+    p = np.stack([station - 0.45, -calculate_body_half_height(station) * 0.93, np.zeros_like(station)], axis=-1) + outward * b_mesh[:, None]
+    p[:, 2] = calculate_body_undulation_sway(p[:, 0] + 0.45, current_time - 0.18 * b_mesh) + 0.045 * (b_mesh ** 1.5) * np.sin(
         TWO_PI * 1.1 * current_time - 7.0 * a_mesh + 1.0
     )
-    record_fn(p, p + unit(outward) * 0.03, b_mesh, margin=0.72)
+    record_fn(p, p + normalize_vector(outward) * 0.03, b_mesh, margin=0.72)
 
-def _generate_pelvic_fins(current_time: float, record_fn) -> None:
+def _generate_pelvic_fins_mesh(current_time: float, record_fn) -> None:
     for lateral_side in (-1, 1):
         a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(0.0, 1.0, 46), np.linspace(0.0, 1.0, 26), indexing="ij")]
         station = 0.37 + 0.09 * a_mesh
         reach = 0.17 * (0.55 + 0.45 * (np.sin(np.pi * a_mesh) ** 0.7))
         outward = np.stack([0.55 * reach, -reach, lateral_side * 0.25 * reach], axis=-1)
-        p = np.stack([station - 0.45, -half_height(station) * 0.90, lateral_side * 0.04 + np.zeros_like(station)], axis=-1) + outward * b_mesh[:, None]
-        p[:, 2] += sway(station, current_time - 0.2 * b_mesh) + 0.04 * (b_mesh ** 2) * np.sin(TWO_PI * 0.8 * current_time + lateral_side + 2.0 * a_mesh)
+        p = np.stack([station - 0.45, -calculate_body_half_height(station) * 0.90, lateral_side * 0.04 + np.zeros_like(station)], axis=-1) + outward * b_mesh[:, None]
+        p[:, 2] += calculate_body_undulation_sway(station, current_time - 0.2 * b_mesh) + 0.04 * (b_mesh ** 2) * np.sin(TWO_PI * 0.8 * current_time + lateral_side + 2.0 * a_mesh)
         p[:, 0] += 0.05 * (b_mesh ** 2) * np.sin(TWO_PI * 0.8 * current_time + 1.5 + lateral_side)
-        record_fn(p, p + unit(outward) * 0.03, b_mesh, margin=0.78, rim=2.0)
+        record_fn(p, p + normalize_vector(outward) * 0.03, b_mesh, margin=0.78, rim=2.0)
 
-def _generate_caudal_fin(current_time: float, record_fn) -> None:
+def _generate_caudal_fin_mesh(current_time: float, record_fn) -> None:
     a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(-1.0, 1.0, 110), np.linspace(0.0, 1.0, 46), indexing="ij")]
     fan_angle = 0.95 * a_mesh
     radius = b_mesh * 0.31 * (1.0 - 0.13 * (a_mesh ** 2))
@@ -288,7 +288,7 @@ def _generate_caudal_fin(current_time: float, record_fn) -> None:
     wave_sample_stations = 0.98 + 0.31 * arc_stations
     tangent_slopes = np.clip(
         np.arctan(
-            np.gradient(sway(wave_sample_stations, current_time - 0.12 * arc_stations), wave_sample_stations)
+            np.gradient(calculate_body_undulation_sway(wave_sample_stations, current_time - 0.12 * arc_stations), wave_sample_stations)
             * (1.0 + 0.3 * arc_stations)
         ),
         -0.95,
@@ -306,7 +306,7 @@ def _generate_caudal_fin(current_time: float, record_fn) -> None:
         [
             tail_x,
             tail_y,
-            sway(0.98, current_time)
+            calculate_body_undulation_sway(0.98, current_time)
             + fan_span * integrated_z[radial_index]
             + 0.03 * (b_mesh ** 2) * np.sin(TWO_PI * SWIM_HZ * current_time - 4.2 + 2.5 * np.abs(a_mesh)),
         ],
@@ -315,7 +315,7 @@ def _generate_caudal_fin(current_time: float, record_fn) -> None:
     ray = np.stack([np.cos(fan_angle), np.sin(fan_angle), np.zeros_like(fan_angle)], axis=-1)
     record_fn(p, p + ray * 0.03, b_mesh, margin=0.76, rim=0.94)
 
-def _generate_pectoral_fins(current_time: float, record_fn) -> None:
+def _generate_pectoral_fins_mesh(current_time: float, record_fn) -> None:
     for lateral_side in (-1, 1):
         a_mesh, b_mesh = [grid.ravel() for grid in np.meshgrid(np.linspace(-1.0, 1.0, 70), np.linspace(0.0, 1.0, 36), indexing="ij")]
         phase_offset = 0.0 if lateral_side > 0 else 2.2
@@ -331,7 +331,7 @@ def _generate_pectoral_fins(current_time: float, record_fn) -> None:
 
         blade_angle = 0.8 * a_mesh
         blade_radius = b_mesh * 0.21 * (1.0 - 0.12 * (a_mesh ** 2))
-        hinge_pivot = np.array([0.375 - 0.45, -0.07, lateral_side * half_width(0.375) * 0.90])
+        hinge_pivot = np.array([0.375 - 0.45, -0.07, lateral_side * calculate_body_half_width(0.375) * 0.90])
         fin_ray = pectoral_axis * np.cos(blade_angle)[:, None] + vector_up * np.sin(blade_angle)[:, None]
         p = (
             hinge_pivot
@@ -340,10 +340,10 @@ def _generate_pectoral_fins(current_time: float, record_fn) -> None:
         )
         record_fn(p, p + fin_ray * 0.03, b_mesh, margin=0.74, rim=0.93)
 
-def fins(current_time: float) -> List[np.ndarray]:
+def generate_fish_fins_mesh(current_time: float) -> List[np.ndarray]:
     fin_components: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
 
-    def record_fin_quads(
+    def record_fin_patch_quads(
         p_coords: np.ndarray,
         q_coords: np.ndarray,
         b_fraction: np.ndarray,
@@ -362,15 +362,15 @@ def fins(current_time: float) -> List[np.ndarray]:
         )
         fin_components.append((p_coords, q_coords, color, luminosity))
 
-    _generate_dorsal_fin(current_time, record_fin_quads)
-    _generate_anal_fin(current_time, record_fin_quads)
-    _generate_pelvic_fins(current_time, record_fin_quads)
-    _generate_caudal_fin(current_time, record_fin_quads)
-    _generate_pectoral_fins(current_time, record_fin_quads)
+    _generate_dorsal_fin_mesh(current_time, record_fin_patch_quads)
+    _generate_anal_fin_mesh(current_time, record_fin_patch_quads)
+    _generate_pelvic_fins_mesh(current_time, record_fin_patch_quads)
+    _generate_caudal_fin_mesh(current_time, record_fin_patch_quads)
+    _generate_pectoral_fins_mesh(current_time, record_fin_patch_quads)
 
     return [np.concatenate([part[dim] for part in fin_components]) for dim in range(4)]
 
-def eyes(current_time: float) -> List[np.ndarray]:
+def generate_fish_eyes_mesh(current_time: float) -> List[np.ndarray]:
     eye_segments: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for lateral_side in (-1, 1):
         radial_grid, phi_grid = [grid.ravel() for grid in np.meshgrid(np.linspace(0.0, 1.0, 9), np.linspace(0.0, TWO_PI, 28), indexing="ij")]
@@ -378,13 +378,13 @@ def eyes(current_time: float) -> List[np.ndarray]:
         station = 0.115 + radius * np.cos(phi_grid)
         y_coord = 0.05 + radius * np.sin(phi_grid)
         z_elevation = lateral_side * (
-            half_width(station) * np.sqrt(np.clip(1.0 - (y_coord / half_height(station)) ** 2, 0.05, 1.0)) + 0.03
+            calculate_body_half_width(station) * np.sqrt(np.clip(1.0 - (y_coord / calculate_body_half_height(station)) ** 2, 0.05, 1.0)) + 0.03
         )
-        points = np.stack([station - 0.45, y_coord, z_elevation + sway(station, current_time)], axis=-1)
+        points = np.stack([station - 0.45, y_coord, z_elevation + calculate_body_undulation_sway(station, current_time)], axis=-1)
 
-        color = np.where((radial_grid < 0.6)[:, None], rgb(58, 34, 30), rgb(255, 190, 96))
+        color = np.where((radial_grid < 0.6)[:, None], create_rgb_vector(58, 34, 30), create_rgb_vector(255, 190, 96))
         is_glint = (radial_grid > 0.15) & (radial_grid < 0.42) & (np.abs(phi_grid - 2.2) < 0.45)
-        color = np.where(is_glint[:, None], rgb(235, 225, 215), color)
+        color = np.where(is_glint[:, None], create_rgb_vector(235, 225, 215), color)
         luminosity = np.where(radial_grid < 0.6, 0.62, 0.72)
         eye_segments.append((points, color, luminosity))
 
@@ -434,7 +434,7 @@ PREY_LOOK, PREY_TURN, PREY_WIDE = PREY_CAMERA_DELAY, PREY_CAMERA_PAN_TIME, PREY_
 PREY_COLOR = np.array([1.0, 0.84, 0.42], dtype=np.float64)
 PREY_INK = PREY_COLOR
 
-def morsel(age: float) -> np.ndarray:
+def sample_food_particle(age: float) -> np.ndarray:
     rocking_offset = np.array([0.035 * np.sin(2.3 * age), 0.0, 0.02 * np.sin(1.7 * age + 1.0)])
     return PREY_SPAWN_POSITION + PREY_DRIFT_VELOCITY * age + rocking_offset
 
@@ -479,7 +479,7 @@ BAR, BARS = MEASURE_BAR, TOTAL_BARS
 LOOP_START_X: float = 1.05
 START_X = LOOP_START_X
 
-def swim_round() -> None:
+def precompute_swim_trajectory() -> None:
     global LOOP, W1, W2, W3, PECT_HZ
     position = np.array(ORBITAL_WAYPOINTS[0][:3], dtype=np.float64)
     heading_yaw = np.pi + 0.5
@@ -502,7 +502,7 @@ def swim_round() -> None:
         if food_timer >= 0:
             food_timer += SIM_TIME_STEP
 
-        target_coords = morsel(food_timer) if is_hunting else np.array(current_target[:3])
+        target_coords = sample_food_particle(food_timer) if is_hunting else np.array(current_target[:3])
         vector_to_target = target_coords - position
         distance_to_target = np.linalg.norm(vector_to_target)
 
@@ -529,7 +529,7 @@ def swim_round() -> None:
             along_heading = vector_to_target[0] * np.cos(heading_yaw) + vector_to_target[2] * np.sin(heading_yaw)
             circling_timer = circling_timer + SIM_TIME_STEP if distance_to_target < 3.0 * current_target[5] else 0.0
             caught_target = (
-                (np.linalg.norm(morsel(food_timer) - snout_mouth_pos) < PREY_CAPTURE_RADIUS)
+                (np.linalg.norm(sample_food_particle(food_timer) - snout_mouth_pos) < PREY_CAPTURE_RADIUS)
                 if is_hunting
                 else (distance_to_target < current_target[5])
             )
@@ -588,7 +588,7 @@ def swim_round() -> None:
                 forward_velocity,
                 active_effort,
                 tail_oscillation_phase,
-                *(morsel(food_timer) if food_timer >= 0 else position),
+                *(sample_food_particle(food_timer) if food_timer >= 0 else position),
                 food_timer,
                 target_mark_idx,
                 float(predation_stare_timer > 0),
@@ -658,7 +658,7 @@ def swim_round() -> None:
         lap_seconds=(cycle_home_indices[2] - cycle_home_indices[1]) * SIM_TIME_STEP,
     )
 
-    def damped_follow(signal: np.ndarray, response_tau: float) -> np.ndarray:
+    def apply_exponential_decay_filter(signal: np.ndarray, response_tau: float) -> np.ndarray:
         buffered_signal = np.empty(2 * resample_count)
         current_val = signal[0]
         for step_idx in range(2 * resample_count):
@@ -672,15 +672,15 @@ def swim_round() -> None:
     wide_framing = 1.0 - PREY_CAMERA_PULLBACK * np.clip(np.linalg.norm(prey_camera_gap, axis=1) / 1.2, 0.0, 1.0)
 
     TRAJECTORY_TRACK.update(
-        cam_x=damped_follow(pos_x + 0.5 * prey_camera_gap[:, 0], 0.55),
-        cam_y=damped_follow(pos_y + 0.5 * prey_camera_gap[:, 1], 0.80),
-        cam_z=damped_follow(pos_z + 0.5 * prey_camera_gap[:, 2], 0.90),
-        lead=damped_follow(np.cos(yaw_arr), 0.90),
-        zoom=damped_follow(
+        cam_x=apply_exponential_decay_filter(pos_x + 0.5 * prey_camera_gap[:, 0], 0.55),
+        cam_y=apply_exponential_decay_filter(pos_y + 0.5 * prey_camera_gap[:, 1], 0.80),
+        cam_z=apply_exponential_decay_filter(pos_z + 0.5 * prey_camera_gap[:, 2], 0.90),
+        lead=apply_exponential_decay_filter(np.cos(yaw_arr), 0.90),
+        zoom=apply_exponential_decay_filter(
             1.34 - 0.52 * np.clip(vel_arr / 0.75, 0.0, 1.0) - 0.22 * np.clip((vel_arr - 0.58) / 0.28, 0.0, 1.0),
             1.0,
         )
-        * damped_follow(wide_framing, 0.25),
+        * apply_exponential_decay_filter(wide_framing, 0.25),
     )
 
     is_among_anemone = (np.abs(pos_x - 0.05) < 1.3) & (pos_y < 0.12) & (pos_z > -1.35)
@@ -707,9 +707,9 @@ def swim_round() -> None:
 
     TRAJECTORY_TRACK["section"] = np.array(section_history[resample_count:], dtype=np.int32)
 
-swim_round()
+precompute_swim_trajectory()
 
-def swimmer(current_time: float) -> Dict[str, Any]:
+def sample_kinematic_trajectory(current_time: float) -> Dict[str, Any]:
     fractional_index = (current_time % LOOP) / SIM_TIME_STEP
     base_index = int(fractional_index) % TRAJECTORY_TRACK["n"]
     lerp_weight = fractional_index - int(fractional_index)
@@ -743,14 +743,14 @@ def swimmer(current_time: float) -> Dict[str, Any]:
     )
     return metrics
 
-def fish_pose(current_time: float) -> Tuple[np.ndarray, float, float]:
-    state = swimmer(current_time)
+def evaluate_swimming_pose(current_time: float) -> Tuple[np.ndarray, float, float]:
+    state = sample_kinematic_trajectory(current_time)
     head_wag = 0.05 * (0.4 + state["e"]) * np.sin(state["phi"] + 0.8)
     return state["place"], np.pi - state["a"] + head_wag, -state["th"]
 
-def fish(current_time: float) -> List[np.ndarray]:
-    world_pos, yaw_heading, pitch_inclination = fish_pose(current_time)
-    state = swimmer(current_time)
+def assemble_fish_model(current_time: float) -> List[np.ndarray]:
+    world_pos, yaw_heading, pitch_inclination = evaluate_swimming_pose(current_time)
+    state = sample_kinematic_trajectory(current_time)
     SWIM_STATE.update(
         effort=min(0.5 + 1.25 * state["e"], 2.0),
         turn=float(np.clip(0.11 * state["spin"], -0.2, 0.2)),
@@ -761,12 +761,12 @@ def fish(current_time: float) -> List[np.ndarray]:
     )
 
     spine_stations = np.linspace(0.0, 1.5, 76)
-    spine_slopes = np.gradient(sway(spine_stations, current_time), spine_stations)
+    spine_slopes = np.gradient(calculate_body_undulation_sway(spine_stations, current_time), spine_stations)
     arc_reach = np.concatenate(
         [[0.0], np.cumsum((spine_stations[1] - spine_stations[0]) / np.sqrt(1.0 + spine_slopes[1:] ** 2))]
     )
 
-    def apply_pose(coords: np.ndarray, is_vector: bool = False) -> np.ndarray:
+    def transform_pose_coordinate(coords: np.ndarray, is_vector: bool = False) -> np.ndarray:
         transformed = coords if is_vector else coords.copy()
         if not is_vector:
             body_termination = np.interp(0.98, spine_stations, arc_reach) - 0.45
@@ -775,16 +775,16 @@ def fish(current_time: float) -> List[np.ndarray]:
                 body_termination + transformed[:, 0] - CAUDAL_FIN_ROOT,
                 np.interp(transformed[:, 0] + 0.45, spine_stations, arc_reach) - 0.45,
             )
-        rotated = rot_y(rot_z(transformed, pitch_inclination), yaw_heading)
+        rotated = rotate_vector_yaw_y(rotate_vector_roll_z(transformed, pitch_inclination), yaw_heading)
         return rotated if is_vector else rotated + world_pos
 
-    body_points, body_normals, body_colors, body_pigments = body(current_time)
-    world_normals = np.nan_to_num(apply_pose(body_normals, is_vector=True))
+    body_points, body_normals, body_colors, body_pigments = generate_fish_body_mesh(current_time)
+    world_normals = np.nan_to_num(transform_pose_coordinate(body_normals, is_vector=True))
     diffuse_illumination = np.clip(world_normals.dot(LIGHT_DIRECTION), 0.0, 1.0)
 
-    head_vector = -apply_pose(np.array([[-1.0, 0.0, 0.0]]), is_vector=True)[0, 2]
-    glint_facing = ease((head_vector - 0.35) / 0.45) if EFFECTS["glint"] else 0.0
-    specular_halfway = unit(LIGHT_DIRECTION + np.array([0.0, 0.0, -1.0]))
+    head_vector = -transform_pose_coordinate(np.array([[-1.0, 0.0, 0.0]]), is_vector=True)[0, 2]
+    glint_facing = calculate_cubic_ease((head_vector - 0.35) / 0.45) if EFFECTS["glint"] else 0.0
+    specular_halfway = normalize_vector(LIGHT_DIRECTION + np.array([0.0, 0.0, -1.0]))
     specular_sheen = (
         (np.clip(world_normals.dot(specular_halfway), 0.0, 1.0) ** 14)
         * (0.25 + 0.75 * glint_facing)
@@ -805,23 +805,23 @@ def fish(current_time: float) -> List[np.ndarray]:
     shaded_tone = np.clip(shaded_tone + 0.75 * specular_sheen[:, None] * (body_pigments != 2)[:, None], 0.0, 1.0)
     luminosity = np.clip(luminosity + 0.3 * specular_sheen, 0.0, 1.0)
 
-    points_list = [apply_pose(body_points)]
-    rays_list = [apply_pose(body_points)]
+    points_list = [transform_pose_coordinate(body_points)]
+    rays_list = [transform_pose_coordinate(body_points)]
     colors_list = [shaded_tone]
     luma_list = [luminosity]
     kind_list = [np.full(len(body_points), SURFACE_FISH)]
     is_ray_list = [np.zeros(len(body_points), dtype=bool)]
 
-    fin_p, fin_q, fin_colors, fin_luma = fins(current_time)
-    points_list.append(apply_pose(fin_p))
-    rays_list.append(apply_pose(fin_q))
+    fin_p, fin_q, fin_colors, fin_luma = generate_fish_fins_mesh(current_time)
+    points_list.append(transform_pose_coordinate(fin_p))
+    rays_list.append(transform_pose_coordinate(fin_q))
     colors_list.append(fin_colors * 0.92)
     luma_list.append(fin_luma)
     kind_list.append(np.full(len(fin_p), SURFACE_FIN))
     is_ray_list.append(np.ones(len(fin_p), dtype=bool))
 
-    eye_p, eye_colors, eye_luma = eyes(current_time)
-    posed_eyes = apply_pose(eye_p)
+    eye_p, eye_colors, eye_luma = generate_fish_eyes_mesh(current_time)
+    posed_eyes = transform_pose_coordinate(eye_p)
     posed_eyes[:, 2] -= 0.004
     points_list.append(posed_eyes)
     rays_list.append(posed_eyes)
@@ -864,7 +864,7 @@ COLLISION_ELLIPSOID_CENTER = np.array([0.08, 0.0, 0.0], dtype=np.float64)
 COLLISION_ELLIPSOID_RADII = np.array([0.60, 0.30, 0.17], dtype=np.float64)
 FISH_C, FISH_R = COLLISION_ELLIPSOID_CENTER, COLLISION_ELLIPSOID_RADII
 
-def current(pos: np.ndarray, current_time: float) -> np.ndarray:
+def evaluate_ocean_current(pos: np.ndarray, current_time: float) -> np.ndarray:
     surge_x = 0.62 * np.sin(ANGULAR_FREQ_1 * current_time - 1.3 * pos[..., 0]) + 0.16 * np.sin(
         ANGULAR_FREQ_3 * current_time + 2.0 * pos[..., 2]
     )
@@ -872,7 +872,7 @@ def current(pos: np.ndarray, current_time: float) -> np.ndarray:
     surge_z = 0.08 * np.cos(ANGULAR_FREQ_2 * current_time + 3.0 * pos[..., 0])
     return np.stack([surge_x, surge_y, surge_z], axis=-1)
 
-class Anemone:
+class SeaAnemoneColony:
     def __init__(self, mound_center: Tuple[float, float, float]):
         self.centre = np.asarray(mound_center, dtype=np.float64)
         node_fractions = np.linspace(0.0, 1.0, NODES_PER_TENTACLE)[None, :, None]
@@ -887,9 +887,9 @@ class Anemone:
         root_positions = self.centre + mound_normals * ANEMONE_MOUND_DIMENSIONS
         aim_vectors = mound_normals * np.array([1.05, 0.70, 1.0]) + np.array([0.0, 0.42, 0.0])
         aim_vectors[:, 1] = np.maximum(aim_vectors[:, 1], 0.30)
-        aim_vectors = unit(aim_vectors)
+        aim_vectors = normalize_vector(aim_vectors)
 
-        lateral_axes = unit(np.cross(aim_vectors, np.array([0.0, 0.0, 1.0])))
+        lateral_axes = normalize_vector(np.cross(aim_vectors, np.array([0.0, 0.0, 1.0])))
         longitudinal_axes = np.cross(aim_vectors, lateral_axes)
         lengths = TENTACLE_LENGTHS[:, None, None]
 
@@ -934,7 +934,7 @@ class Anemone:
         self.dice = np.random.default_rng(7)
         self.now = 0.0
 
-    def _resolve_tentacle_constraints(
+    def _enforce_tentacle_constraints(
         self,
         tentacle_x: np.ndarray,
         fish_pos: np.ndarray,
@@ -947,7 +947,7 @@ class Anemone:
                 target_pos = tentacle_x[:, node_idx - 1] + self.offset[:, node_idx - 1]
                 tentacle_x[:, node_idx] += self.stiff[0, node_idx - 1] * (target_pos - tentacle_x[:, node_idx])
 
-            fish_local_space = rot_z(rot_y(tentacle_x - fish_pos, -fish_yaw), -fish_pitch)
+            fish_local_space = rotate_vector_roll_z(rotate_vector_yaw_y(tentacle_x - fish_pos, -fish_yaw), -fish_pitch)
             normalized_coords = (fish_local_space - COLLISION_ELLIPSOID_CENTER) / (
                 COLLISION_ELLIPSOID_RADII + TENTACLE_RADIUS
             )
@@ -960,27 +960,27 @@ class Anemone:
                 * (COLLISION_ELLIPSOID_RADII + TENTACLE_RADIUS)
                 + COLLISION_ELLIPSOID_CENTER
             )
-            world_surface = rot_y(rot_z(projected_surface, fish_pitch), fish_yaw) + fish_pos
+            world_surface = rotate_vector_yaw_y(rotate_vector_roll_z(projected_surface, fish_pitch), fish_yaw) + fish_pos
             tentacle_x = np.where(is_penetrating, tentacle_x + 0.5 * (world_surface - tentacle_x), tentacle_x)
             tentacle_x[:, 0] = self.rest[:, 0]
 
             for node_idx in range(1, NODES_PER_TENTACLE):
                 relative_vector = tentacle_x[:, node_idx] - tentacle_x[:, node_idx - 1]
                 tentacle_x[:, node_idx] = (
-                    tentacle_x[:, node_idx - 1] + unit(relative_vector) * self.link[:, node_idx - 1, None]
+                    tentacle_x[:, node_idx - 1] + normalize_vector(relative_vector) * self.link[:, node_idx - 1, None]
                 )
         return tentacle_x
 
-    def step(self) -> None:
+    def simulate_step(self) -> None:
         sim_time = (self.n - SIM_WARMUP_STEPS) * SIM_TIME_STEP
-        fish_pos, fish_yaw, fish_pitch = fish_pose(sim_time)
-        prior_fish_pos = fish_pose(sim_time - SIM_TIME_STEP)[0]
+        fish_pos, fish_yaw, fish_pitch = evaluate_swimming_pose(sim_time)
+        prior_fish_pos = evaluate_swimming_pose(sim_time - SIM_TIME_STEP)[0]
 
         tentacle_x = self.x
         tentacle_v = self.v
         contact_mask = np.zeros(tentacle_x.shape[:2], dtype=bool)
 
-        flow_velocity = current(tentacle_x, sim_time)
+        flow_velocity = evaluate_ocean_current(tentacle_x, sim_time)
         fish_distance_sq = ((tentacle_x - fish_pos) ** 2).sum(axis=-1)
         fish_proximity_wake = np.exp(-fish_distance_sq / 0.10)
         flow_velocity += 0.9 * fish_proximity_wake[..., None] * (fish_pos - prior_fish_pos) / SIM_TIME_STEP
@@ -999,7 +999,7 @@ class Anemone:
         tentacle_v[:, 0] = 0.0
         tentacle_x += tentacle_v * SIM_TIME_STEP
 
-        tentacle_x = self._resolve_tentacle_constraints(
+        tentacle_x = self._enforce_tentacle_constraints(
             tentacle_x, fish_pos, fish_yaw, fish_pitch, contact_mask
         )
 
@@ -1029,7 +1029,7 @@ class Anemone:
         )
 
         self.owed += WAKE_EMISSION_RATE * np.clip((fish_speed - 0.50) / 0.30, 0.0, 1.0) * SIM_TIME_STEP
-        heading_dir = unit(fish_pos - prior_fish_pos)
+        heading_dir = normalize_vector(fish_pos - prior_fish_pos)
         while self.owed >= 1.0:
             self.owed -= 1.0
             spark_idx = int(self.dice.integers(WAKE_POOL_SIZE))
@@ -1044,7 +1044,7 @@ class Anemone:
         self.now = sim_time
         self.n += 1
 
-    def at(self, timestamp: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def sample_state_at(self, timestamp: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         target_step = int(round(timestamp / SIM_TIME_STEP))
         if target_step + SIM_WARMUP_STEPS < self.n:
             self.x = self.rest.copy()
@@ -1058,7 +1058,7 @@ class Anemone:
             self.dice = np.random.default_rng(7)
 
         while self.n < target_step + SIM_WARMUP_STEPS:
-            self.step()
+            self.simulate_step()
 
         fine_stations = np.linspace(0.0, 1.0, 34)
         cap_contour = np.sqrt(np.clip(1.0 - ((fine_stations - 0.90) / 0.10) ** 2, 0.0, 1.0))
@@ -1103,7 +1103,7 @@ class Anemone:
 LIGHT_BEAM_POSITIONS = np.array([-2.6, -1.35, -0.2, 0.95, 2.1, 3.2], dtype=np.float64)
 BEAMS = LIGHT_BEAM_POSITIONS
 
-def shafts(
+def render_sunlight_caustics(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     current_time: float,
@@ -1133,14 +1133,14 @@ def shafts(
 
     row_indices, col_indices = np.indices(volumetric_light.shape)
     dust_mask = (char_matrix == 0) & (volumetric_light > 0.30) & (((row_indices * 2 + col_indices) % 5) == 0)
-    char_matrix[dust_mask] = glyph_id("/")
-    color_matrix[dust_mask] = rgb(46, 84, 108) * volumetric_light[dust_mask, None]
+    char_matrix[dust_mask] = encode_glyph_index("/")
+    color_matrix[dust_mask] = create_rgb_vector(46, 84, 108) * volumetric_light[dust_mask, None]
 
-def draw_motes(
+def rasterize_water_motes(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     depth_buffer: np.ndarray,
-    anemone_sim: Anemone,
+    anemone_sim: SeaAnemoneColony,
     current_time: float,
     project_fn: Any,
 ) -> None:
@@ -1172,7 +1172,7 @@ def draw_motes(
     cols, rows, all_glow = cols[sort_order], rows[sort_order], all_glow[sort_order]
 
     char_matrix[rows, cols] = np.select(
-        [all_glow > 0.55, all_glow > 0.18], [glyph_id("*"), glyph_id("+")], glyph_id(".")
+        [all_glow > 0.55, all_glow > 0.18], [encode_glyph_index("*"), encode_glyph_index("+")], encode_glyph_index(".")
     )
     color_matrix[rows, cols] = np.clip(
         MOTE_COLOR * (0.16 + 0.84 * all_glow[:, None]) + 0.5 * np.clip(all_glow[:, None] - 0.5, 0.0, 1.0),
@@ -1184,10 +1184,10 @@ def draw_motes(
         hot_motes = (all_glow > 0.60) & (cols + delta_c >= 0) & (cols + delta_c < GRID_COLUMNS)
         free_cells = hot_motes.copy()
         free_cells[hot_motes] = char_matrix[rows[hot_motes], cols[hot_motes] + delta_c] == 0
-        char_matrix[rows[free_cells], cols[free_cells] + delta_c] = glyph_id("-")
+        char_matrix[rows[free_cells], cols[free_cells] + delta_c] = encode_glyph_index("-")
         color_matrix[rows[free_cells], cols[free_cells] + delta_c] = MOTE_COLOR * 0.5 * all_glow[free_cells, None]
 
-def draw_prey(
+def rasterize_prey_particles(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     depth_buffer: np.ndarray,
@@ -1197,17 +1197,17 @@ def draw_prey(
 ) -> None:
     max_rows = char_matrix.shape[0]
 
-    def plot_glyph(coords: np.ndarray, char: str, intensity: float) -> Tuple[int, int]:
+    def render_particle_glyph(coords: np.ndarray, char: str, intensity: float) -> Tuple[int, int]:
         sx, sy, _ = project_fn(np.asarray(coords, dtype=np.float64)[None])
         c_idx, r_idx = int(sx[0] // CHAR_WIDTH), int(sy[0] // CHAR_HEIGHT)
         if 0 <= c_idx < GRID_COLUMNS and 0 <= r_idx < max_rows and depth_buffer[r_idx, c_idx] > coords[2] - 0.05:
-            char_matrix[r_idx, c_idx] = glyph_id(char)
+            char_matrix[r_idx, c_idx] = encode_glyph_index(char)
             color_matrix[r_idx, c_idx] = np.clip(PREY_COLOR * intensity, 0.0, 1.0)
         return c_idx, r_idx
 
     if state["food"] >= 0:
         base_luminance = np.clip(state["food"] / 0.8, 0.0, 1.0) * (0.85 + 0.15 * np.sin(9.0 * current_time))
-        center_c, center_r = plot_glyph(state["prey"], "@", 1.3 * base_luminance)
+        center_c, center_r = render_particle_glyph(state["prey"], "@", 1.3 * base_luminance)
         whisker_flick = int(current_time * 5.0) % 2
         time_since_spotted = (current_time % LOOP) - TRAJECTORY_TRACK["spot"]
         glint_flash = np.clip(1.0 - time_since_spotted / 0.6, 0.0, 1.0) if time_since_spotted >= 0 else 0.0
@@ -1241,7 +1241,7 @@ def draw_prey(
                 and 0 <= center_r + dr < max_rows
                 and depth_buffer[center_r + dr, center_c + dc] > state["prey"][2] - 0.05
             ):
-                char_matrix[center_r + dr, center_c + dc] = glyph_id(char_glyph)
+                char_matrix[center_r + dr, center_c + dc] = encode_glyph_index(char_glyph)
                 color_matrix[center_r + dr, center_c + dc] = np.clip(
                     PREY_COLOR * shine_val + 0.5 * glint_flash, 0.0, 1.0
                 )
@@ -1252,13 +1252,13 @@ def draw_prey(
             scatter_vec = np.array(
                 [np.cos(2.4 * scatter_idx), np.sin(2.4 * scatter_idx) - 0.3, 0.4 * np.sin(1.3 * scatter_idx)]
             )
-            plot_glyph(
+            render_particle_glyph(
                 TRAJECTORY_TRACK["bite_at"] + scatter_vec * 0.16 * (time_since_bite**0.6),
                 ".",
                 0.9 * (1.0 - time_since_bite / 0.7),
             )
 
-def draw_arms(
+def rasterize_anemone_tentacles(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     depth_buffer: np.ndarray,
@@ -1314,7 +1314,7 @@ def draw_arms(
         if not is_hit.any():
             continue
 
-        tip_transition = ease((length_fractions[closest_node_idx] - 0.30) / 0.62)
+        tip_transition = calculate_cubic_ease((length_fractions[closest_node_idx] - 0.30) / 0.62)
         base_tone = (
             TENTACLE_STEM * (1.0 - tip_transition[..., None]) + TENTACLE_TIP * tip_transition[..., None]
         ) * depth_attenuation[arm_idx]
@@ -1337,7 +1337,7 @@ def draw_arms(
 
         tentacle_glyph = np.where(
             is_rim_edge,
-            line_glyph(-offset_y, offset_x),
+            determine_line_glyph(-offset_y, offset_x),
             TENTACLE_FILL_GLYPHS[
                 np.clip(
                     (glyph_value * 1.25 * len(TENTACLE_FILL_GLYPHS)).astype(int), 0, len(TENTACLE_FILL_GLYPHS) - 1
@@ -1367,7 +1367,7 @@ WATER_SPECKS = _rng_water.random((150, 3))
 WATER_MOTES = _rng_water.random((46, 4))
 DOT, MOTE = WATER_SPECKS, WATER_MOTES
 
-def water(
+def render_background_water(
     current_time: float,
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
@@ -1386,8 +1386,8 @@ def water(
         )
         % GRID_COLUMNS
     ).astype(int)
-    char_matrix[r_coords, c_coords] = glyph_id(".")
-    color_matrix[r_coords, c_coords] = rgb(64, 84, 112) * (0.5 + 0.5 * WATER_SPECKS[:, 2:3]) * deep_factor
+    char_matrix[r_coords, c_coords] = encode_glyph_index(".")
+    color_matrix[r_coords, c_coords] = create_rgb_vector(64, 84, 112) * (0.5 + 0.5 * WATER_SPECKS[:, 2:3]) * deep_factor
 
     r_coords = (
         (WATER_MOTES[:, 1] * rows - 0.3 * current_time * (0.4 + WATER_MOTES[:, 2]) + camera_slide[1] * 0.55) % rows
@@ -1401,12 +1401,12 @@ def water(
         % GRID_COLUMNS
     ).astype(int)
     twinkle = np.sin(current_time * (1.0 + 2.0 * WATER_MOTES[:, 2]) + WATER_MOTES[:, 3] * 40.0)
-    char_matrix[r_coords, c_coords] = np.where(twinkle > 0.7, glyph_id("*"), glyph_id("+"))
+    char_matrix[r_coords, c_coords] = np.where(twinkle > 0.7, encode_glyph_index("*"), encode_glyph_index("+"))
     color_matrix[r_coords, c_coords] = (
-        rgb(70, 118, 160) * (0.5 + 0.5 * np.clip(twinkle + 0.4, 0.0, 1.0))[:, None] * deep_factor
+        create_rgb_vector(70, 118, 160) * (0.5 + 0.5 * np.clip(twinkle + 0.4, 0.0, 1.0))[:, None] * deep_factor
     )
 
-def stroke(
+def rasterize_vector_stroke(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     owner_matrix: np.ndarray,
@@ -1424,7 +1424,7 @@ def stroke(
         valid = (col_indices >= 0) & (col_indices < GRID_COLUMNS) & (row_indices >= 0) & (row_indices < rows)
 
         char_matrix[row_indices[valid], col_indices[valid]] = (
-            line_glyph(x1 - x0, y1 - y0) if custom_glyph is None else glyph_id(custom_glyph)
+            determine_line_glyph(x1 - x0, y1 - y0) if custom_glyph is None else encode_glyph_index(custom_glyph)
         )
         color_matrix[row_indices[valid], col_indices[valid]] = stroke_color
         owner_matrix[row_indices[valid], col_indices[valid]] = SURFACE_BACKGROUND
@@ -1432,31 +1432,31 @@ def stroke(
 CORAL_STRUCTURE_CACHE: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
 _corals = CORAL_STRUCTURE_CACHE
 
-def coral_shape(random_seed: int) -> Tuple[np.ndarray, np.ndarray]:
+def generate_coral_branch_profile(random_seed: int) -> Tuple[np.ndarray, np.ndarray]:
     if random_seed not in CORAL_STRUCTURE_CACHE:
         rng = np.random.default_rng(random_seed)
         twigs: List[Tuple[float, float, float, float, int]] = []
         buds: List[Tuple[float, float, bool]] = []
 
-        def grow_branch(x: float, y: float, angle: float, branch_len: float, depth: int) -> None:
+        def propagate_coral_branch(x: float, y: float, angle: float, branch_len: float, depth: int) -> None:
             if depth == 0:
                 buds.append((x, y, rng.random() < 0.6))
                 return
             x_end, y_end = x + branch_len * np.sin(angle), y + branch_len * np.cos(angle)
             twigs.append((x, y, x_end, y_end, depth))
             spread_angle = 0.35 + 0.30 * rng.random()
-            grow_branch(x_end, y_end, angle - spread_angle, branch_len * (0.62 + 0.20 * rng.random()), depth - 1)
-            grow_branch(
+            propagate_coral_branch(x_end, y_end, angle - spread_angle, branch_len * (0.62 + 0.20 * rng.random()), depth - 1)
+            propagate_coral_branch(
                 x_end, y_end, angle + spread_angle * (0.70 + 0.50 * rng.random()), branch_len * (0.62 + 0.20 * rng.random()), depth - 1
             )
             if rng.random() < 0.3:
-                grow_branch(x_end, y_end, angle + 0.1 * rng.normal(), branch_len * 0.60, depth - 1)
+                propagate_coral_branch(x_end, y_end, angle + 0.1 * rng.normal(), branch_len * 0.60, depth - 1)
 
-        grow_branch(0.0, 0.0, 0.0, 1.0, 5)
+        propagate_coral_branch(0.0, 0.0, 0.0, 1.0, 5)
         CORAL_STRUCTURE_CACHE[random_seed] = (np.array(twigs), np.array(buds))
     return CORAL_STRUCTURE_CACHE[random_seed]
 
-def coral(
+def generate_coral_formations(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     owner_matrix: np.ndarray,
@@ -1469,13 +1469,13 @@ def coral(
     current_time: float = 0.0,
     bend_amount: float = 0.0,
 ) -> None:
-    twigs, buds = coral_shape(random_seed)
+    twigs, buds = generate_coral_branch_profile(random_seed)
     surge_lean = lambda height: bend_amount * 0.06 * np.sin(
         ANGULAR_FREQ_1 * current_time + 0.7 * random_seed
     ) * (np.clip(height, 0.0, None) ** 1.5)
 
     for x0, y0, x1, y1, level in twigs:
-        stroke(
+        rasterize_vector_stroke(
             char_matrix,
             color_matrix,
             owner_matrix,
@@ -1491,7 +1491,7 @@ def coral(
         c_idx = int((screen_x + display_size * (bx + surge_lean(by))) // CHAR_WIDTH)
         r_idx = int((screen_y - display_size * by) // CHAR_HEIGHT)
         if 0 <= c_idx < GRID_COLUMNS and 0 <= r_idx < rows:
-            char_matrix[r_idx, c_idx] = glyph_id("o" if is_round else "*")
+            char_matrix[r_idx, c_idx] = encode_glyph_index("o" if is_round else "*")
             color_matrix[r_idx, c_idx] = np.minimum(coral_color * 1.5, 1.0)
             owner_matrix[r_idx, c_idx] = SURFACE_BACKGROUND
 
@@ -1507,16 +1507,16 @@ GEOLOGICAL_ROCKS = [
 ROCKS = GEOLOGICAL_ROCKS
 
 REEF_CORALS = [
-    (-2.25, SEABED_ELEVATION, 0.85, 0.34, rgb(236, 96, 132), 3),
-    (-2.85, SEABED_ELEVATION, 0.45, 0.24, rgb(240, 150, 90), 8),
-    (2.60, SEABED_ELEVATION + 0.72, 1.25, 0.27, rgb(80, 200, 200), 5),
-    (1.0, SEABED_ELEVATION, 2.3, 0.30, rgb(180, 110, 220), 12),
-    (-0.9, SEABED_ELEVATION + 0.5, 3.4, 0.30, rgb(236, 96, 132), 21),
-    (4.3, SEABED_ELEVATION, 0.9, 0.25, rgb(240, 150, 90), 30),
+    (-2.25, SEABED_ELEVATION, 0.85, 0.34, create_rgb_vector(236, 96, 132), 3),
+    (-2.85, SEABED_ELEVATION, 0.45, 0.24, create_rgb_vector(240, 150, 90), 8),
+    (2.60, SEABED_ELEVATION + 0.72, 1.25, 0.27, create_rgb_vector(80, 200, 200), 5),
+    (1.0, SEABED_ELEVATION, 2.3, 0.30, create_rgb_vector(180, 110, 220), 12),
+    (-0.9, SEABED_ELEVATION + 0.5, 3.4, 0.30, create_rgb_vector(236, 96, 132), 21),
+    (4.3, SEABED_ELEVATION, 0.9, 0.25, create_rgb_vector(240, 150, 90), 30),
 ]
 CORALS = REEF_CORALS
 
-def sand(
+def generate_seabed_terrain(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     rows: int,
@@ -1530,13 +1530,13 @@ def sand(
         indexing="ij",
     )
     x_flat, z_flat = x_indices.ravel(), z_indices.ravel()
-    noise_hash = hash01(x_flat, z_flat)
+    noise_hash = generate_hash_float(x_flat, z_flat)
     keep_mask = noise_hash > 0.52
 
-    pos_x = x_flat * 0.13 + 0.09 * hash01(z_flat, x_flat)
+    pos_x = x_flat * 0.13 + 0.09 * generate_hash_float(z_flat, x_flat)
     pos_z = z_flat * 0.13 + 0.09 * noise_hash
     ripple_contour = np.sin(pos_x * 4.2 + 1.6 * np.sin(pos_z * 2.1)) > 0.72
-    keep_mask |= ripple_contour & (hash01(x_flat + 7, z_flat) > 0.35)
+    keep_mask |= ripple_contour & (generate_hash_float(x_flat + 7, z_flat) > 0.35)
 
     sand_points = np.stack([pos_x, SEABED_ELEVATION + 0.03 * np.sin(pos_x * 1.7 + pos_z), pos_z], axis=-1)[keep_mask]
     screen_x, screen_y, _ = project_fn(sand_points)
@@ -1552,14 +1552,14 @@ def sand(
         ) * np.sin(sand_points[:, 2] * 4.0 - ANGULAR_FREQ_2 * current_time + sand_points[:, 0])
         depth_fade = depth_fade * (1.0 + 1.1 * (np.clip(caustic_wave, 0.0, 1.0) ** 2))
 
-    char_matrix[row_idx[valid], cols[valid]] = np.where(ripple_contour[keep_mask], glyph_id("~"), glyph_id("."))[valid]
+    char_matrix[row_idx[valid], cols[valid]] = np.where(ripple_contour[keep_mask], encode_glyph_index("~"), encode_glyph_index("."))[valid]
     color_matrix[row_idx[valid], cols[valid]] = (
-        rgb(168, 140, 98)
+        create_rgb_vector(168, 140, 98)
         * np.where(ripple_contour[keep_mask], 0.56, 0.36)[:, None]
         * depth_fade[:, None]
     )[valid]
 
-def rocks() -> List[np.ndarray]:
+def generate_seabed_boulders() -> List[np.ndarray]:
     rock_pieces: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for cx, cz, rx, ry, rz, seed in GEOLOGICAL_ROCKS:
         theta_grid, phi_grid = [
@@ -1581,9 +1581,9 @@ def rocks() -> List[np.ndarray]:
         )
         points = np.array([cx, SEABED_ELEVATION, cz]) + normals * surface_bumps[:, None] * np.array([rx, ry, rz])
 
-        diffuse_lit = np.clip(unit(normals / np.array([rx, ry, rz])).dot(LIGHT_DIRECTION), 0.0, 1.0)
+        diffuse_lit = np.clip(normalize_vector(normals / np.array([rx, ry, rz])).dot(LIGHT_DIRECTION), 0.0, 1.0)
         distance_falloff = np.clip(1.0 - (cz + 1.0) / 6.0, 0.35, 1.0)
-        rock_color = rgb(104, 116, 150) * (0.20 + 0.50 * diffuse_lit[:, None]) * distance_falloff
+        rock_color = create_rgb_vector(104, 116, 150) * (0.20 + 0.50 * diffuse_lit[:, None]) * distance_falloff
         rock_luma = 0.05 + 0.75 * (diffuse_lit**1.5)
         rock_pieces.append((points, rock_color, rock_luma))
 
@@ -1597,7 +1597,7 @@ def rocks() -> List[np.ndarray]:
         np.zeros(len(points_all), dtype=bool),
     ]
 
-def foot() -> List[np.ndarray]:
+def generate_anemone_pedal_disc() -> List[np.ndarray]:
     theta_grid, phi_grid = [
         grid.ravel()
         for grid in np.meshgrid(
@@ -1611,7 +1611,7 @@ def foot() -> List[np.ndarray]:
         axis=-1,
     )
     points = np.array(ANEMONE_ROOT_POSITION) + normals * ANEMONE_MOUND_DIMENSIONS - np.array([0.0, 0.06, 0.0])
-    diffuse_lit = np.clip(unit(normals / ANEMONE_MOUND_DIMENSIONS).dot(LIGHT_DIRECTION), 0.0, 1.0)
+    diffuse_lit = np.clip(normalize_vector(normals / ANEMONE_MOUND_DIMENSIONS).dot(LIGHT_DIRECTION), 0.0, 1.0)
     base_color = TENTACLE_STEM * (0.14 + 0.30 * diffuse_lit[:, None])
     luminosity = 0.10 + 0.25 * diffuse_lit
     return [
@@ -1623,12 +1623,12 @@ def foot() -> List[np.ndarray]:
         np.zeros(len(points), dtype=bool),
     ]
 
-ROCK_POINTS = [np.concatenate([r, f]) for r, f in zip(rocks(), foot())]
+ROCK_POINTS = [np.concatenate([r, f]) for r, f in zip(generate_seabed_boulders(), generate_anemone_pedal_disc())]
 
 FONT_CACHE: Dict[int, ImageFont.FreeTypeFont] = {}
 _font = FONT_CACHE
 
-def font(size_pt: int) -> ImageFont.FreeTypeFont:
+def load_default_font(size_pt: int) -> ImageFont.FreeTypeFont:
     if size_pt not in FONT_CACHE:
         custom_font_path = os.environ.get("ASCII_LAB_FONT")
         if custom_font_path and os.path.isfile(custom_font_path):
@@ -1644,9 +1644,9 @@ def font(size_pt: int) -> ImageFont.FreeTypeFont:
                 FONT_CACHE[size_pt] = ImageFont.load_default()
     return FONT_CACHE[size_pt]
 
-def make_atlas() -> np.ndarray:
+def rasterize_glyph_atlas() -> np.ndarray:
     atlas = np.zeros((96, CHAR_HEIGHT, CHAR_WIDTH), dtype=np.float32)
-    glyph_font = font(20)
+    glyph_font = load_default_font(20)
     for glyph_code in range(95):
         char_image = Image.new("L", (CHAR_WIDTH, CHAR_HEIGHT), 0)
         baseline_lift = 5 if chr(32 + glyph_code) == "_" else 3
@@ -1661,7 +1661,7 @@ SCENE_LAYOUT_CONFIG = {
 }
 LAYOUT = SCENE_LAYOUT_CONFIG
 
-def _apply_boundary_contours(
+def _enhance_depth_contours(
     char_matrix: np.ndarray,
     color_matrix: np.ndarray,
     owner_matrix: np.ndarray,
@@ -1676,13 +1676,13 @@ def _apply_boundary_contours(
     fish_cells = owner_matrix == SURFACE_FISH
 
     contour_edges = np.full((rows, GRID_COLUMNS), -1, dtype=np.int32)
-    contour_edges[fish_cells & boundary_up & (owner_matrix != SURFACE_FIN)] = glyph_id("-")
-    contour_edges[fish_cells & boundary_down] = glyph_id("_")
-    contour_edges[fish_cells & boundary_left] = glyph_id("(")
-    contour_edges[fish_cells & boundary_left & boundary_up] = glyph_id("/")
-    contour_edges[fish_cells & boundary_left & boundary_down] = glyph_id("\\")
-    contour_edges[fish_cells & boundary_right & boundary_up] = glyph_id("\\")
-    contour_edges[fish_cells & boundary_right & boundary_down] = glyph_id("/")
+    contour_edges[fish_cells & boundary_up & (owner_matrix != SURFACE_FIN)] = encode_glyph_index("-")
+    contour_edges[fish_cells & boundary_down] = encode_glyph_index("_")
+    contour_edges[fish_cells & boundary_left] = encode_glyph_index("(")
+    contour_edges[fish_cells & boundary_left & boundary_up] = encode_glyph_index("/")
+    contour_edges[fish_cells & boundary_left & boundary_down] = encode_glyph_index("\\")
+    contour_edges[fish_cells & boundary_right & boundary_up] = encode_glyph_index("\\")
+    contour_edges[fish_cells & boundary_right & boundary_down] = encode_glyph_index("/")
 
     padded_fin = np.pad(owner_matrix == SURFACE_FIN, 1)
     near_fin = padded_fin[:-2, 1:-1] | padded_fin[2:, 1:-1] | padded_fin[1:-1, :-2] | padded_fin[1:-1, 2:]
@@ -1694,7 +1694,7 @@ def _apply_boundary_contours(
     char_matrix[broken_outline_mask] = contour_edges[broken_outline_mask]
     color_matrix[broken_outline_mask] = color_matrix[broken_outline_mask] * 0.78 + 0.10
 
-def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
+def render_depth_and_color_buffers(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
     layout = SCENE_LAYOUT_CONFIG
     mode_index = 0 if rows == GRID_ROWS_CODE else 1
     screen_scale, midpoint_y = layout["scale"][mode_index], layout["mid"][mode_index]
@@ -1703,7 +1703,7 @@ def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
     color_matrix = np.zeros((rows, GRID_COLUMNS, 3), dtype=np.float64)
     owner_matrix = np.zeros((rows, GRID_COLUMNS), dtype=np.int32)
 
-    st = swimmer(current_time)
+    st = sample_kinematic_trajectory(current_time)
     camera_x = st["cam_x"]
     camera_y = 0.62 * st["cam_y"] - 0.10
     camera_lead = 0.11 * st["lead"]
@@ -1716,39 +1716,39 @@ def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
         orbit_tilt = -CAMERA_TILT_RATE * (camera_y - 0.15)
         aim_target = np.array([camera_x + camera_lead, camera_y, st["cam_z"]])
 
-    def world_to_view(points: np.ndarray) -> np.ndarray:
+    def convert_world_to_camera_view(points: np.ndarray) -> np.ndarray:
         if orbit_swing == 0.0 and orbit_tilt == 0.0:
             return points
-        return rot_x(rot_y(points - SCENE_PIVOT_CENTER, orbit_swing), orbit_tilt) + SCENE_PIVOT_CENTER
+        return rotate_vector_pitch_x(rotate_vector_yaw_y(points - SCENE_PIVOT_CENTER, orbit_swing), orbit_tilt) + SCENE_PIVOT_CENTER
 
     center_point = (
-        world_to_view(aim_target[None])[0]
+        convert_world_to_camera_view(aim_target[None])[0]
         if (orbit_swing or orbit_tilt)
         else np.array([camera_x + camera_lead, camera_y, 0.0])
     )
-    fish_depth_near = world_to_view(np.array([[camera_x, camera_y, st["cam_z"]]]))[0, 2]
+    fish_depth_near = convert_world_to_camera_view(np.array([[camera_x, camera_y, st["cam_z"]]]))[0, 2]
     screen_scale *= ((CAMERA_DISTANCE + fish_depth_near) / CAMERA_DISTANCE) ** 0.85
 
-    def project_to_screen(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def project_camera_to_screen_grid(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         shrinkage = screen_scale * CAMERA_DISTANCE / (CAMERA_DISTANCE + points[:, 2])
         proj_x = FRAME_WIDTH / 2.0 + shrinkage * (points[:, 0] - center_point[0])
         proj_y = midpoint_y - shrinkage * (points[:, 1] - center_point[1])
         return proj_x, proj_y, shrinkage
 
-    water(
+    render_background_water(
         current_time,
         char_matrix,
         color_matrix,
         rows,
         camera_slide=(camera_x * screen_scale / CHAR_WIDTH, camera_y * screen_scale / CHAR_HEIGHT),
     )
-    fish_geometry = fish(current_time)
-    sand(char_matrix, color_matrix, rows, lambda v: project_to_screen(world_to_view(v)), camera_x, current_time)
+    fish_geometry = assemble_fish_model(current_time)
+    generate_seabed_terrain(char_matrix, color_matrix, rows, lambda v: project_camera_to_screen_grid(convert_world_to_camera_view(v)), camera_x, current_time)
 
     for cx, cy, cz, csize, ccolor, cseed in REEF_CORALS:
-        coral_bx, coral_by, coral_shrink = project_to_screen(world_to_view(np.array([[cx, cy, cz]])))
+        coral_bx, coral_by, coral_shrink = project_camera_to_screen_grid(convert_world_to_camera_view(np.array([[cx, cy, cz]])))
         if -300 < coral_bx[0] < FRAME_WIDTH + 300:
-            coral(
+            generate_coral_formations(
                 char_matrix,
                 color_matrix,
                 owner_matrix,
@@ -1764,14 +1764,14 @@ def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
 
     combined_solids = [np.concatenate([a, b]) for a, b in zip(fish_geometry, ROCK_POINTS)]
     p_pts, q_pts, col_pts, lum_pts, kind_pts, is_ray = combined_solids
-    p_view, q_view = world_to_view(p_pts), world_to_view(q_pts)
+    p_view, q_view = convert_world_to_camera_view(p_pts), convert_world_to_camera_view(q_pts)
 
-    screen_px, screen_py, _ = project_to_screen(p_view)
-    screen_qx, screen_qy, _ = project_to_screen(q_view)
+    screen_px, screen_py, _ = project_camera_to_screen_grid(p_view)
+    screen_qx, screen_qy, _ = project_camera_to_screen_grid(q_view)
 
     surface_glyphs = np.where(
         is_ray,
-        line_glyph(screen_qx - screen_px, screen_qy - screen_py),
+        determine_line_glyph(screen_qx - screen_px, screen_qy - screen_py),
         GLYPH_RAMP_INDICES[
             np.clip(((1.0 - lum_pts) ** 1.3 * (len(GLYPH_RAMP) - 1)).astype(int), 0, len(GLYPH_RAMP) - 1)
         ],
@@ -1800,24 +1800,24 @@ def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
     owner_matrix[r_sorted, c_sorted] = kind_sorted
     depth_buffer[r_sorted, c_sorted] = z_sorted
 
-    _apply_boundary_contours(char_matrix, color_matrix, owner_matrix, rows, current_time)
+    _enhance_depth_contours(char_matrix, color_matrix, owner_matrix, rows, current_time)
 
     if "reef" not in layout:
-        layout["reef"] = Anemone(layout["weed"])
-    tentacles = layout["reef"].at(current_time)
-    draw_arms(char_matrix, color_matrix, depth_buffer, (world_to_view(tentacles[0]),) + tentacles[1:], project_to_screen)
+        layout["reef"] = SeaAnemoneColony(layout["weed"])
+    tentacles = layout["reef"].sample_state_at(current_time)
+    rasterize_anemone_tentacles(char_matrix, color_matrix, depth_buffer, (convert_world_to_camera_view(tentacles[0]),) + tentacles[1:], project_camera_to_screen_grid)
 
     if EFFECTS["plankton"]:
-        draw_motes(
+        rasterize_water_motes(
             char_matrix,
             color_matrix,
             depth_buffer,
             layout["reef"],
             current_time,
-            lambda v: project_to_screen(world_to_view(v)),
+            lambda v: project_camera_to_screen_grid(convert_world_to_camera_view(v)),
         )
     if EFFECTS["shafts"]:
-        shafts(
+        render_sunlight_caustics(
             char_matrix,
             color_matrix,
             current_time,
@@ -1826,13 +1826,13 @@ def grid(current_time: float, rows: int) -> Tuple[np.ndarray, np.ndarray]:
             midpoint_y,
         )
     if EFFECTS["prey"]:
-        draw_prey(
+        rasterize_prey_particles(
             char_matrix,
             color_matrix,
             depth_buffer,
             st,
             current_time,
-            lambda v: project_to_screen(world_to_view(v)),
+            lambda v: project_camera_to_screen_grid(convert_world_to_camera_view(v)),
         )
 
     return char_matrix, color_matrix
@@ -1851,10 +1851,10 @@ GLOW_NEAR, GLOW_FAR, GLOW_RAYS, STREAK = (
 GLOBAL_ATLAS: Optional[np.ndarray] = None
 ATLAS = GLOBAL_ATLAS
 
-def paint(char_matrix: np.ndarray, color_matrix: np.ndarray) -> np.ndarray:
+def render_colored_ascii_image(char_matrix: np.ndarray, color_matrix: np.ndarray) -> np.ndarray:
     global GLOBAL_ATLAS
     if GLOBAL_ATLAS is None:
-        GLOBAL_ATLAS = make_atlas()
+        GLOBAL_ATLAS = rasterize_glyph_atlas()
 
     rows = char_matrix.shape[0]
     canvas_height = rows * CHAR_HEIGHT
@@ -1894,65 +1894,65 @@ try:
 except Exception:
     SOURCE_CODE_LINES = [
         "Prompt Procedural Simulator",
-        "def main(): pass",
+        "def execute_cli_entrypoint(): pass",
     ]
 
 SOURCE = SOURCE_CODE_LINES
 CODE_INSPECTION_SECTIONS = [
-    "def body(",
-    "def fins(",
-    "class Anemone:",
-    "def frame(",
+    "def generate_fish_body_mesh(",
+    "def generate_fish_fins_mesh(",
+    "class SeaAnemoneColony:",
+    "def generate_scene_image_frame(",
 ]
 SECTIONS = CODE_INSPECTION_SECTIONS
 
-def panel(current_time: float, rows: int) -> Image.Image:
+def generate_composite_preview_panel(current_time: float, rows: int) -> Image.Image:
     panel_height = FRAME_HEIGHT - rows * CHAR_HEIGHT
     panel_image = Image.new("RGB", (FRAME_WIDTH, panel_height), (8, 10, 14))
     draw_ctx = ImageDraw.Draw(panel_image)
     draw_ctx.line([(0, 0), (FRAME_WIDTH, 0)], fill=(40, 48, 60))
 
-    target_section_idx = swimmer(current_time)["section"] % len(CODE_INSPECTION_SECTIONS)
+    target_section_idx = sample_kinematic_trajectory(current_time)["section"] % len(CODE_INSPECTION_SECTIONS)
     marker_str = CODE_INSPECTION_SECTIONS[target_section_idx]
     start_line_idx = next((idx for idx, line in enumerate(SOURCE_CODE_LINES) if marker_str in line), 0)
 
     for line_offset in range(panel_height // 30):
         src_line_num = start_line_idx + line_offset
         code_text = SOURCE_CODE_LINES[src_line_num][:74] if src_line_num < len(SOURCE_CODE_LINES) else ""
-        draw_ctx.text((14, 14 + 30 * line_offset), f"{src_line_num + 1:4d}", font=font(21), fill=(70, 80, 96))
+        draw_ctx.text((14, 14 + 30 * line_offset), f"{src_line_num + 1:4d}", font=load_default_font(21), fill=(70, 80, 96))
         text_color = (110, 150, 120) if code_text.strip().startswith("#") else (176, 186, 204)
         draw_ctx.text(
             (88, 14 + 30 * line_offset),
             code_text,
-            font=font(21),
+            font=load_default_font(21),
             fill=(150, 220, 170) if line_offset == 0 else text_color,
         )
     return panel_image
 
-def frame(current_time: float, code: bool = False) -> Image.Image:
+def generate_scene_image_frame(current_time: float, code: bool = False) -> Image.Image:
     rows = GRID_ROWS_CODE if code else GRID_ROWS_FULL
-    char_matrix, color_matrix = grid(current_time, rows)
+    char_matrix, color_matrix = render_depth_and_color_buffers(current_time, rows)
 
     output_image = Image.new("RGB", (FRAME_WIDTH, FRAME_HEIGHT), (0, 0, 0))
-    rendered_raster = Image.fromarray(paint(char_matrix, color_matrix))
+    rendered_raster = Image.fromarray(render_colored_ascii_image(char_matrix, color_matrix))
     output_image.paste(rendered_raster, (0, 0))
 
     draw_ctx = ImageDraw.Draw(output_image)
-    st = swimmer(current_time)
+    st = sample_kinematic_trajectory(current_time)
     diagnostics_label = f"tail {st['hz']:.1f} Hz   speed {st['speed']:.2f}   chars {int((char_matrix > 0).sum())}"
-    draw_ctx.text((96, 130), diagnostics_label, font=font(20), fill=(120, 132, 150))
+    draw_ctx.text((96, 130), diagnostics_label, font=load_default_font(20), fill=(120, 132, 150))
     draw_ctx.text(
-        (FRAME_WIDTH - 96 - draw_ctx.textlength(HANDLE, font=font(20)), 130),
+        (FRAME_WIDTH - 96 - draw_ctx.textlength(HANDLE, font=load_default_font(20)), 130),
         HANDLE,
-        font=font(20),
+        font=load_default_font(20),
         fill=(120, 132, 150),
     )
 
     if code:
-        output_image.paste(panel(current_time, rows), (0, rows * CHAR_HEIGHT))
+        output_image.paste(generate_composite_preview_panel(current_time, rows), (0, rows * CHAR_HEIGHT))
     return output_image
 
-def format_size(bytes_total: float) -> str:
+def format_byte_size(bytes_total: float) -> str:
     scales = ("B", "KB", "MB", "GB", "TB")
     val = float(max(0.0, bytes_total))
     for unit in scales[:-1]:
@@ -1961,7 +1961,7 @@ def format_size(bytes_total: float) -> str:
         val /= 1024.0
     return f"{val:.1f} {scales[-1]}"
 
-def format_time(seconds: float) -> str:
+def format_duration_string(seconds: float) -> str:
     if not (isinstance(seconds, (int, float)) and np.isfinite(seconds) and seconds >= 0):
         return "--:--"
     total_seconds = int(seconds)
@@ -1971,7 +1971,7 @@ def format_time(seconds: float) -> str:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
 
-def _locate_ffmpeg() -> str:
+def _find_ffmpeg_executable() -> str:
     candidate = shutil.which("ffmpeg")
     if not candidate:
         try:
@@ -1992,14 +1992,14 @@ def _locate_ffmpeg() -> str:
         )
     return candidate
 
-def _build_progress_meter(current_step: int, total_steps: int, width: int = 24) -> str:
+def _construct_progress_bar(current_step: int, total_steps: int, width: int = 24) -> str:
     filled_cells = int(width * current_step // total_steps) if total_steps > 0 else 0
     bar_body = "=" * filled_cells
     if filled_cells < width:
         bar_body += ">" + " " * (width - filled_cells - 1)
     return bar_body
 
-def mp4(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool = False) -> None:
+def encode_mp4_video_sequence(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool = False) -> None:
     if dur is None:
         if isinstance(code, (int, float)):
             dur = float(code)
@@ -2007,7 +2007,7 @@ def mp4(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool 
         else:
             dur = CYCLE_DURATION
 
-    ffmpeg_bin = _locate_ffmpeg()
+    ffmpeg_bin = _find_ffmpeg_executable()
     total_frames = int(dur * DEFAULT_FPS)
 
     if not quiet:
@@ -2036,7 +2036,7 @@ def mp4(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool 
     t_start = time.time()
 
     for idx in range(total_frames):
-        current_img = frame(idx / DEFAULT_FPS, code=code)
+        current_img = generate_scene_image_frame(idx / DEFAULT_FPS, code=code)
         pipe_proc.stdin.write(current_img.tobytes())
 
         if not quiet:
@@ -2044,9 +2044,9 @@ def mp4(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool 
             speed = (idx + 1) / elapsed if elapsed > 0 else 0.0
             eta = (total_frames - (idx + 1)) / speed if speed > 0 else 0.0
             pct = ((idx + 1) / total_frames) * 100.0
-            meter = _build_progress_meter(idx + 1, total_frames, 24)
+            meter = _construct_progress_bar(idx + 1, total_frames, 24)
             sys.stdout.write(
-                f"\r  [{meter}] {pct:5.1f}% | Frame {idx + 1}/{total_frames} | {speed:.2f} fps | ETA: {format_time(eta)}"
+                f"\r  [{meter}] {pct:5.1f}% | Frame {idx + 1}/{total_frames} | {speed:.2f} fps | ETA: {format_duration_string(eta)}"
             )
             sys.stdout.flush()
 
@@ -2059,9 +2059,9 @@ def mp4(path: str, code: bool = False, dur: Optional[float] = None, quiet: bool 
         elapsed_total = time.time() - t_start
         file_bytes = os.path.getsize(path) if os.path.exists(path) else 0
         sys.stdout.write("\n")
-        print(f"✓ Video saved successfully: '{path}' ({format_size(file_bytes)}, rendered in {format_time(elapsed_total)})")
+        print(f"✓ Video saved successfully: '{path}' ({format_byte_size(file_bytes)}, rendered in {format_duration_string(elapsed_total)})")
 
-def supports_color() -> bool:
+def detect_ansi_color_support() -> bool:
     if os.environ.get("NO_COLOR"):
         return False
     is_interactive = getattr(sys.stdout, "isatty", lambda: False)()
@@ -2072,7 +2072,7 @@ def supports_color() -> bool:
     term_type = os.environ.get("TERM", "").lower()
     return any(identifier in term_type for identifier in ("color", "xterm", "screen", "ansi", "linux"))
 
-def _compute_terminal_window(
+def _calculate_terminal_viewport(
     total_rows: int,
     total_cols: int,
     full: bool = False,
@@ -2091,14 +2091,14 @@ def _compute_terminal_window(
     col_end = min(total_cols, max(80, term_dims.columns))
     return row_start, row_end, col_start, col_end
 
-def render_terminal_frame(
+def draw_ascii_terminal_frame(
     timestamp: float = 3.0,
     color: Optional[bool] = None,
     full: bool = False,
 ) -> str:
-    use_color = supports_color() if color is None else bool(color)
-    chars, colors = grid(timestamp, GRID_ROWS_CODE)
-    r_start, r_end, c_start, c_end = _compute_terminal_window(chars.shape[0], chars.shape[1], full=full)
+    use_color = detect_ansi_color_support() if color is None else bool(color)
+    chars, colors = render_depth_and_color_buffers(timestamp, GRID_ROWS_CODE)
+    r_start, r_end, c_start, c_end = _calculate_terminal_viewport(chars.shape[0], chars.shape[1], full=full)
 
     rendered_rows: List[str] = []
     for r in range(r_start, r_end):
@@ -2122,7 +2122,7 @@ def render_terminal_frame(
 
     return "\n".join(rendered_rows)
 
-class _TerminalCursorVisibility:
+class _TerminalCursorController:
     def __enter__(self):
         sys.stdout.write("\033[?25l\033[2J")
         sys.stdout.flush()
@@ -2132,22 +2132,22 @@ class _TerminalCursorVisibility:
         sys.stdout.write("\033[?25h\n")
         sys.stdout.flush()
 
-def play_terminal(
+def stream_terminal_animation(
     fps: float = 10.0,
     dur: float = CYCLE_DURATION,
     color: Optional[bool] = None,
     full: bool = False,
     loop: bool = False,
 ) -> None:
-    use_color = supports_color() if color is None else bool(color)
+    use_color = detect_ansi_color_support() if color is None else bool(color)
     time_increment = 1.0 / max(fps, 0.1)
     sim_time = 0.0
 
-    with _TerminalCursorVisibility():
+    with _TerminalCursorController():
         try:
             while True:
                 cycle_start = time.time()
-                frame_text = render_terminal_frame(sim_time, color=use_color, full=full)
+                frame_text = draw_ascii_terminal_frame(sim_time, color=use_color, full=full)
                 sys.stdout.write(f"\033[H{frame_text}\n\033[2Kt={sim_time:5.2f}s | Press Ctrl+C to stop")
                 sys.stdout.flush()
 
@@ -2165,7 +2165,7 @@ def play_terminal(
         except KeyboardInterrupt:
             pass
 
-def _configure_export_options(subparser: argparse.ArgumentParser) -> None:
+def _setup_export_arguments(subparser: argparse.ArgumentParser) -> None:
     subparser.add_argument(
         "--code",
         "--with-code",
@@ -2190,15 +2190,15 @@ def _configure_export_options(subparser: argparse.ArgumentParser) -> None:
         help="Suppress progress and status logs",
     )
 
-def _run_terminal_view(args: argparse.Namespace) -> None:
+def _handle_terminal_view_command(args: argparse.Namespace) -> None:
     time_point = getattr(args, "time", 3.0)
     vertical_full = getattr(args, "full", False)
     color_mode = getattr(args, "color", None)
-    rendered_scene = render_terminal_frame(timestamp=time_point, color=color_mode, full=vertical_full)
+    rendered_scene = draw_ascii_terminal_frame(timestamp=time_point, color=color_mode, full=vertical_full)
     print(rendered_scene)
 
-def _run_terminal_playback(args: argparse.Namespace) -> None:
-    play_terminal(
+def _handle_terminal_play_command(args: argparse.Namespace) -> None:
+    stream_terminal_animation(
         fps=args.fps,
         dur=args.duration,
         color=args.color,
@@ -2206,32 +2206,32 @@ def _run_terminal_playback(args: argparse.Namespace) -> None:
         loop=args.loop,
     )
 
-def _run_png_export(args: argparse.Namespace) -> None:
+def _handle_png_export_command(args: argparse.Namespace) -> None:
     include_code_panel = bool(args.code and not args.no_code)
     if not args.quiet:
         print(f"Rendering still frame at t={args.time:g}s ({FRAME_WIDTH}x{FRAME_HEIGHT})...")
     render_start = time.time()
-    still_img = frame(args.time, code=include_code_panel)
+    still_img = generate_scene_image_frame(args.time, code=include_code_panel)
     still_img.save(args.output)
     if not args.quiet:
         render_duration = time.time() - render_start
         file_size_bytes = os.path.getsize(args.output) if os.path.exists(args.output) else 0
-        print(f"✓ Still frame saved: '{args.output}' ({format_size(file_size_bytes)}, {render_duration:.2f}s)")
+        print(f"✓ Still frame saved: '{args.output}' ({format_byte_size(file_size_bytes)}, {render_duration:.2f}s)")
 
-def _run_mp4_export(args: argparse.Namespace, mp4_subparser: argparse.ArgumentParser) -> None:
+def _handle_mp4_export_command(args: argparse.Namespace, mp4_subparser: argparse.ArgumentParser) -> None:
     include_code_panel = bool(args.code and not args.no_code)
     min_video_duration = 1.0 / DEFAULT_FPS
     if not np.isfinite(args.duration) or args.duration < min_video_duration:
         mp4_subparser.error(f"Duration must be at least {min_video_duration:g} seconds")
 
     try:
-        mp4(args.output, code=include_code_panel, dur=args.duration, quiet=args.quiet)
+        encode_mp4_video_sequence(args.output, code=include_code_panel, dur=args.duration, quiet=args.quiet)
     except FileNotFoundError as err:
         sys.exit(f"\n[Error] {err}\n")
     except subprocess.CalledProcessError as err:
         sys.exit(f"\n[Error] FFmpeg execution failed with code {err.returncode}\n")
 
-def _build_cli_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
+def _create_cli_argument_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
     parser = argparse.ArgumentParser(
         description=f"{PROJECT_NAME} - Procedural ASCII Marine Simulator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -2266,7 +2266,7 @@ def _build_cli_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Arg
     )
     cmd_png.add_argument("time", type=float, help="Timestamp in seconds")
     cmd_png.add_argument("output", help="Output file path (e.g. frame.png)")
-    _configure_export_options(cmd_png)
+    _setup_export_arguments(cmd_png)
 
     cmd_mp4 = subparsers.add_parser(
         "mp4",
@@ -2274,7 +2274,7 @@ def _build_cli_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Arg
     )
     cmd_mp4.add_argument("output", help="Output MP4 video file path (e.g. video.mp4)")
     cmd_mp4.add_argument("--duration", type=float, default=CYCLE_DURATION, help="Video duration in seconds")
-    _configure_export_options(cmd_mp4)
+    _setup_export_arguments(cmd_mp4)
 
     sub_map = {
         "show": cmd_show,
@@ -2284,24 +2284,26 @@ def _build_cli_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Arg
     }
     return parser, sub_map
 
-def main(argv: list[str] | None = None) -> None:
+def execute_cli_entrypoint(argv: list[str] | None = None) -> None:
     cli_tokens = sys.argv[1:] if argv is None else argv
     if not cli_tokens:
-        print(render_terminal_frame(3.0))
+        print(draw_ascii_terminal_frame(3.0))
         return
 
-    parser, sub_map = _build_cli_parser()
+    parser, sub_map = _create_cli_argument_parser()
     parsed_args = parser.parse_args(cli_tokens)
 
     subcommand = parsed_args.format
     if subcommand in ("show", "terminal", "print", "view") or subcommand is None:
-        _run_terminal_view(parsed_args)
+        _handle_terminal_view_command(parsed_args)
     elif subcommand in ("play", "live", "anim"):
-        _run_terminal_playback(parsed_args)
+        _handle_terminal_play_command(parsed_args)
     elif subcommand == "png":
-        _run_png_export(parsed_args)
+        _handle_png_export_command(parsed_args)
     elif subcommand == "mp4":
-        _run_mp4_export(parsed_args, sub_map["mp4"])
+        _handle_mp4_export_command(parsed_args, sub_map["mp4"])
+
+main = execute_cli_entrypoint
 
 if __name__ == "__main__":
-    main()
+    execute_cli_entrypoint()
