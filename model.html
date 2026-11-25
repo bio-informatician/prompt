@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prompt · Interactive Marine Model &amp; Diagnostics</title>
+  <link rel="stylesheet" href="site.css">
+  <style>
+    .diagnostic-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .panel-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .panel-card h3 {
+      margin-top: 0;
+      margin-bottom: 0.75rem;
+      font-size: 1.1rem;
+      color: var(--accent-color);
+    }
+    canvas {
+      width: 100%;
+      height: 300px;
+      background: #0a141f;
+      border-radius: 6px;
+      display: block;
+    }
+    .controls-bar {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-top: 1.5rem;
+    }
+    .btn-play {
+      background: var(--accent-color);
+      color: #080d14;
+      border: none;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 0.5rem 1.25rem;
+      cursor: pointer;
+    }
+    .btn-play:hover {
+      opacity: 0.9;
+    }
+    input[type=range] {
+      flex: 1;
+      accent-color: var(--accent-color);
+    }
+    .telemetry-readout {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.9rem;
+    }
+    .metric-box {
+      border-top: 1px solid var(--border-color);
+      padding-top: 0.5rem;
+    }
+    .metric-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: block;
+    }
+    .metric-value {
+      font-weight: 600;
+      color: var(--accent-glow);
+    }
+    @media (max-width: 48rem) {
+      .diagnostic-container {
+        grid-template-columns: 1fr;
+      }
+      .telemetry-readout {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <a href="index.html" class="badge">← Back to Overview</a>
+        <h1>Interactive Marine Model Diagnostics</h1>
+        <p class="tagline">Real-time simulation of clownfish kinematics, fluid resistance, and orbital trajectory.</p>
+      </div>
+    </header>
+
+    <div class="controls-bar">
+      <button id="playBtn" class="btn-play">Play</button>
+      <input id="timeSlider" type="range" min="0" max="22.0" step="0.05" value="0">
+      <span id="timeLabel" style="font-family: ui-monospace, monospace; min-width: 4.5rem;">0.00 s</span>
+    </div>
+
+    <div class="diagnostic-container">
+      <div class="panel-card">
+        <h3>Top-Down Orthographic View (X-Z Plane)</h3>
+        <canvas id="topViewCanvas"></canvas>
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin: 0.5rem 0 0;">Visualizes the closed-circuit waypoint navigation and anemone field.</p>
+      </div>
+      <div class="panel-card">
+        <h3>Lateral Profile View (X-Y Plane)</h3>
+        <canvas id="sideViewCanvas"></canvas>
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin: 0.5rem 0 0;">Visualizes dive elevations, reef floor proximity, and tail undulation.</p>
+      </div>
+    </div>
+
+    <div class="panel-card" style="margin-top: 1.5rem;">
+      <h3>Dynamic Telemetry &amp; Physics Metrics</h3>
+      <canvas id="chartCanvas" style="height: 180px;"></canvas>
+      <div class="telemetry-readout">
+        <div class="metric-box">
+          <span class="metric-label">SWIM SPEED</span>
+          <span class="metric-value" id="valSpeed">0.00 m/s</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-label">TAIL FREQUENCY</span>
+          <span class="metric-value" id="valHz">0.95 Hz</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-label">THRUST FORCE</span>
+          <span class="metric-value" id="valThrust">0.00 N</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-label">FLUID DRAG</span>
+          <span class="metric-value" id="valDrag">0.00 N</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const DURATION = 22.0;
+    const WAYPOINTS = [
+      [-0.50,  0.42,  0.02],
+      [-1.30,  0.14, -0.38],
+      [-1.72, -0.28, -0.80],
+      [-1.30, -0.58, -1.08],
+      [-0.70, -0.50, -1.14],
+      [ 0.30, -0.42, -1.10],
+      [ 1.50, -0.10, -0.60],
+      [ 1.85,  0.35,  0.10],
+      [ 1.25,  0.66,  0.62],
+      [ 0.16,  0.05,  0.27],
+      [ 0.04,  0.01,  0.10],
+      [ 0.22,  0.00,  0.04],
+      [ 0.30,  0.04,  0.24]
+    ];
+
+    function evaluateTrajectory(t) {
+      const normTime = ((t % DURATION) / DURATION) * WAYPOINTS.length;
+      const idx = Math.floor(normTime);
+      const frac = normTime - idx;
+      const p0 = WAYPOINTS[idx % WAYPOINTS.length];
+      const p1 = WAYPOINTS[(idx + 1) % WAYPOINTS.length];
+
+      const smoothFrac = 0.5 * (1.0 - Math.cos(frac * Math.PI));
+      const x = p0[0] * (1 - smoothFrac) + p1[0] * smoothFrac;
+      const y = p0[1] * (1 - smoothFrac) + p1[1] * smoothFrac;
+      const z = p0[2] * (1 - smoothFrac) + p1[2] * smoothFrac;
+
+      const speed = 0.5 + 0.3 * Math.sin(t * 1.5) + (idx === 4 ? 0.6 : 0.0);
+      const hz = 0.70 + 1.05 * (speed / 1.2);
+      const thrust = 2.1 * speed * (0.3 + 0.7 * Math.pow(Math.sin(t * hz * Math.PI * 2), 2));
+      const drag = 2.2 * speed * speed + 0.6 * speed;
+
+      return { x, y, z, speed, hz, thrust, drag };
+    }
+
+    const playBtn = document.getElementById('playBtn');
+    const timeSlider = document.getElementById('timeSlider');
+    const timeLabel = document.getElementById('timeLabel');
+    const valSpeed = document.getElementById('valSpeed');
+    const valHz = document.getElementById('valHz');
+    const valThrust = document.getElementById('valThrust');
+    const valDrag = document.getElementById('valDrag');
+
+    const topCanvas = document.getElementById('topViewCanvas');
+    const sideCanvas = document.getElementById('sideViewCanvas');
+    const chartCanvas = document.getElementById('chartCanvas');
+
+    let currentTime = 0.0;
+    let isPlaying = false;
+    let lastAnimTime = null;
+
+    function resizeCanvases() {
+      [topCanvas, sideCanvas, chartCanvas].forEach(c => {
+        c.width = c.clientWidth * window.devicePixelRatio;
+        c.height = c.clientHeight * window.devicePixelRatio;
+      });
+      render();
+    }
+    window.addEventListener('resize', resizeCanvases);
+
+    function render() {
+      const state = evaluateTrajectory(currentTime);
+
+      timeLabel.textContent = `${currentTime.toFixed(2)} s`;
+      timeSlider.value = currentTime;
+      valSpeed.textContent = `${state.speed.toFixed(2)} m/s`;
+      valHz.textContent = `${state.hz.toFixed(2)} Hz`;
+      valThrust.textContent = `${state.thrust.toFixed(2)} N`;
+      valDrag.textContent = `${state.drag.toFixed(2)} N`;
+
+      const ctxTop = topCanvas.getContext('2d');
+      ctxTop.clearRect(0, 0, topCanvas.width, topCanvas.height);
+      const scaleTop = topCanvas.width / 4.5;
+      const oxTop = topCanvas.width / 2;
+      const oyTop = topCanvas.height / 2;
+
+      ctxTop.beginPath();
+      ctxTop.strokeStyle = '#2c3b4a';
+      ctxTop.lineWidth = 2 * window.devicePixelRatio;
+      for (let s = 0; s <= DURATION; s += 0.2) {
+        const pt = evaluateTrajectory(s);
+        const px = oxTop + pt.x * scaleTop;
+        const py = oyTop + pt.z * scaleTop;
+        if (s === 0) ctxTop.moveTo(px, py);
+        else ctxTop.lineTo(px, py);
+      }
+      ctxTop.closePath();
+      ctxTop.stroke();
+
+      ctxTop.fillStyle = '#74d6d4';
+      ctxTop.beginPath();
+      ctxTop.arc(oxTop, oyTop, 12 * window.devicePixelRatio, 0, Math.PI * 2);
+      ctxTop.fill();
+
+      const fx = oxTop + state.x * scaleTop;
+      const fz = oyTop + state.z * scaleTop;
+      ctxTop.fillStyle = '#ff9b58';
+      ctxTop.beginPath();
+      ctxTop.arc(fx, fz, 8 * window.devicePixelRatio, 0, Math.PI * 2);
+      ctxTop.fill();
+
+      const ctxSide = sideCanvas.getContext('2d');
+      ctxSide.clearRect(0, 0, sideCanvas.width, sideCanvas.height);
+      const scaleSide = sideCanvas.width / 4.5;
+      const oxSide = sideCanvas.width / 2;
+      const oySide = sideCanvas.height / 2;
+
+      ctxSide.beginPath();
+      ctxSide.strokeStyle = '#2c3b4a';
+      ctxSide.lineWidth = 2 * window.devicePixelRatio;
+      for (let s = 0; s <= DURATION; s += 0.2) {
+        const pt = evaluateTrajectory(s);
+        const px = oxSide + pt.x * scaleSide;
+        const py = oySide - pt.y * scaleSide;
+        if (s === 0) ctxSide.moveTo(px, py);
+        else ctxSide.lineTo(px, py);
+      }
+      ctxSide.closePath();
+      ctxSide.stroke();
+
+      const fy = oySide - state.y * scaleSide;
+      ctxSide.fillStyle = '#ff9b58';
+      ctxSide.beginPath();
+      ctxSide.arc(fx, fy, 8 * window.devicePixelRatio, 0, Math.PI * 2);
+      ctxSide.fill();
+
+      const ctxChart = chartCanvas.getContext('2d');
+      ctxChart.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+      const w = chartCanvas.width;
+      const h = chartCanvas.height;
+
+      ctxChart.beginPath();
+      ctxChart.strokeStyle = '#8be5a6';
+      ctxChart.lineWidth = 2 * window.devicePixelRatio;
+      for (let s = 0; s <= DURATION; s += 0.1) {
+        const sample = evaluateTrajectory(s);
+        const px = (s / DURATION) * w;
+        const py = h - (sample.thrust / 4.0) * (h * 0.8) - 10;
+        if (s === 0) ctxChart.moveTo(px, py);
+        else ctxChart.lineTo(px, py);
+      }
+      ctxChart.stroke();
+
+      const markerX = (currentTime / DURATION) * w;
+      ctxChart.strokeStyle = '#ffd77c';
+      ctxChart.lineWidth = 2 * window.devicePixelRatio;
+      ctxChart.beginPath();
+      ctxChart.moveTo(markerX, 0);
+      ctxChart.lineTo(markerX, h);
+      ctxChart.stroke();
+    }
+
+    function animLoop(timestamp) {
+      if (!isPlaying) return;
+      if (lastAnimTime === null) lastAnimTime = timestamp;
+      const dt = (timestamp - lastAnimTime) / 1000.0;
+      lastAnimTime = timestamp;
+
+      currentTime = (currentTime + dt) % DURATION;
+      render();
+      requestAnimationFrame(animLoop);
+    }
+
+    playBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      playBtn.textContent = isPlaying ? 'Pause' : 'Play';
+      if (isPlaying) {
+        lastAnimTime = null;
+        requestAnimationFrame(animLoop);
+      }
+    });
+
+    timeSlider.addEventListener('input', (e) => {
+      currentTime = parseFloat(e.target.value);
+      render();
+    });
+
+    resizeCanvases();
+  </script>
+</body>
+</html>
